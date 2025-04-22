@@ -19,7 +19,7 @@ class _SplashScreenState extends State<SplashScreen>
   AnimationController? _controller;
   Animation<double>? _animation;
   final prefs = UserPreferences();
-  final ListAppsController listAppscontroller = Get.put(ListAppsController());
+  // final ListAppsController listAppscontroller = Get.put(ListAppsController());
 
   @override
   void initState() {

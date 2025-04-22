@@ -15,7 +15,8 @@ class StepTree extends StatefulWidget {
 class _StepTreeState extends State<StepTree> with WidgetsBindingObserver {
   StepsController controller = Get.find();
 
-  final ListAppsController listAppscontroller = Get.find();
+  final ListAppsController listAppscontroller = Get.put(ListAppsController());
+  // final ListAppsController listAppscontroller = Get.find();
 
   final TextEditingController searchController = TextEditingController();
 

@@ -12,6 +12,7 @@ import 'firebase_options.dart';
 
 import 'dart:async';
 
+// Ale1qa@gmail.com
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 

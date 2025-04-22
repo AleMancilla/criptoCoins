@@ -55,6 +55,13 @@ class MainActivity: FlutterActivity() {
                     dbHelper.writableDatabase // Abre la base de datos
                     result.success("Base de datos inicializada en Kotlin")
                 }
+                "updateUsageLimits" -> {
+                    Log.e("Error in channel", "ENTROOOOOOOOOOOOOOOOOOO XD")
+
+                    val appMonitorServiceIntent = Intent(this, AppMonitorService::class.java)
+                    startService(appMonitorServiceIntent)
+                    result.success("Usage limits updated in service.")
+                }
                 "insertUser" -> {
                     val username = call.argument<String>("username") ?: ""
                     val email = call.argument<String>("email") ?: ""
@@ -138,6 +145,8 @@ class MainActivity: FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        dbHelper = DatabaseHelper(this)
+
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "sendToKotlin") {
@@ -171,26 +180,25 @@ class MainActivity: FlutterActivity() {
         }
 
          
-        dbHelper = DatabaseHelper(this)
         // Establecer el canal de método para comunicarse con Flutter
-        MethodChannel(flutterEngine!!.dartExecutor.binaryMessenger, CHANNELDB).setMethodCallHandler { call, result ->
-            when (call.method) {
-               "getUsers" -> {
-                    val users = getUsers() // Asegúrate de que este método exista
-                    result.success(users)
-                }
-               "updateUsageLimits" -> {
-            Log.e("Error in channel", "ENTROOOOOOOOOOOOOOOOOOO XD")
+        // MethodChannel(flutterEngine!!.dartExecutor.binaryMessenger, CHANNELDB).setMethodCallHandler { call, result ->
+        //     when (call.method) {
+        //        "getUsers" -> {
+        //             val users = getUsers() // Asegúrate de que este método exista
+        //             result.success(users)
+        //         }
+        //        "updateUsageLimits" -> {
+        //             Log.e("Error in channel", "ENTROOOOOOOOOOOOOOOOOOO XD")
 
-                    val appMonitorServiceIntent = Intent(this, AppMonitorService::class.java)
-                    startService(appMonitorServiceIntent)
-                    result.success("Usage limits updated in service.")
-                }
-                else -> {
-                    result.notImplemented()
-                }
-            }
-        }
+        //             val appMonitorServiceIntent = Intent(this, AppMonitorService::class.java)
+        //             startService(appMonitorServiceIntent)
+        //             result.success("Usage limits updated in service.")
+        //         }
+        //         else -> {
+        //             result.notImplemented()
+        //         }
+        //     }
+        // }
     }
 
     private fun getUsers(): List<Map<String, Any>> {

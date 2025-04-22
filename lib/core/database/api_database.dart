@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:device_apps/device_apps.dart';
 import 'package:get/get.dart';
 import 'package:wenia_assignment/core/database/databaseservice.dart';
@@ -7,6 +9,18 @@ import 'package:wenia_assignment/core/database/models/model_db_usage_limits.dart
 class ApiDatabase {
   static insertUser({required String name, required String email}) async {
     await DatabaseService.insertUser(name, email);
+  }
+
+  static getAllAppsInDB() async {
+    List<ModelDbAllowedApps> listModelDbAllowedApps = await getAllowedApps();
+    int i = 0;
+
+    listModelDbAllowedApps.forEach(
+      (element) {
+        i += 1;
+        log('$i App: ${element.appName} - ${element.packageName}');
+      },
+    );
   }
 
   static insertAllowedApp(
@@ -122,6 +136,7 @@ class ApiDatabase {
           (e) => ModelDbAllowedApps.fromJson(e),
         )
         .toList();
+    print(listModelDbAllowedApps);
 
     return listModelDbAllowedApps;
   }

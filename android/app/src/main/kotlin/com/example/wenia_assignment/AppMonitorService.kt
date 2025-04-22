@@ -164,6 +164,7 @@ class AppMonitorService : Service() {
                 }
             } else {
                 // Si el paquete no está permitido, detener el seguimiento
+                Log.d("AppMonitorServiceDENEGADA", "App DENEGADA: $currentApp  list $allowedPackages ")
                 lastAppPackage?.let { stopTracking(it) }
                 lastAppPackage = null // Restablecer el paquete actual
             }

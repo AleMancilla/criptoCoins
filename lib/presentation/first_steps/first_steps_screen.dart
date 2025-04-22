@@ -88,7 +88,7 @@ class _FirstStepsScreenState extends State<FirstStepsScreen> {
                 StepTwo(),
                 StepTree(),
                 StepFour(),
-                StepTwoDotTwo(),
+                // StepTwoDotTwo(),
                 Center(child: Text('Bienvenido')),
               ],
             ),
@@ -159,17 +159,18 @@ class _FirstStepsScreenState extends State<FirstStepsScreen> {
                 ApiDatabase.insertUsageLimitList(
                     selectedApps, listAppscontroller.maxUsageTime);
 
-                _pageController.nextPage(
-                  duration: Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                );
-                return;
-              }
-              if (_pageController.page == 6) {
+                // _pageController.nextPage(
+                //   duration: Duration(milliseconds: 300),
+                //   curve: Curves.easeInOut,
+                // );
                 CustomNavigator.push(context, AuthHomeScreen());
-                // CustomNavigator.push(context, AuthHomeScreen());
                 return;
               }
+              // if (_pageController.page == 6) {
+              //   CustomNavigator.push(context, AuthHomeScreen());
+              //   // CustomNavigator.push(context, AuthHomeScreen());
+              //   return;
+              // }
               _pageController.nextPage(
                 duration: Duration(milliseconds: 300),
                 curve: Curves.easeInOut,

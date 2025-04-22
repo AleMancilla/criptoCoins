@@ -2,6 +2,7 @@ import 'package:device_apps/device_apps.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:wenia_assignment/core/database/api_database.dart';
+import 'package:wenia_assignment/core/database/databaseservice.dart';
 import 'package:wenia_assignment/core/theme/custom_colors.dart';
 import 'package:wenia_assignment/presentation/home/controller/home_controller.dart';
 import 'package:wenia_assignment/presentation/home/list_apps_controller.dart';
@@ -14,7 +15,8 @@ class ListAppsScreen extends StatefulWidget {
 class _ListAppsScreenState extends State<ListAppsScreen> {
   final HomeController homecontroller = Get.put(HomeController());
 
-  final ListAppsController listAppscontroller = Get.find();
+  final ListAppsController listAppscontroller = Get.put(ListAppsController());
+  // final ListAppsController listAppscontroller = Get.find();
 
   bool edit = false;
 
@@ -112,6 +114,7 @@ class _ListAppsScreenState extends State<ListAppsScreen> {
                       onTap: () {
                         edit = true;
                         setState(() {});
+                        // ApiDatabase.getAllAppsInDB();
                       },
                       child: Container(
                         margin: EdgeInsets.only(bottom: 10),
@@ -137,6 +140,7 @@ class _ListAppsScreenState extends State<ListAppsScreen> {
                             .toList();
 
                         ApiDatabase.insertAllowedAppList(selectedApps);
+                        // DatabaseService.updateUsageLimits();
                       },
                       child: Container(
                         margin: EdgeInsets.only(bottom: 10),
