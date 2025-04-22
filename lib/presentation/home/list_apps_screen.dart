@@ -141,6 +141,11 @@ class _ListAppsScreenState extends State<ListAppsScreen> {
 
                         ApiDatabase.insertAllowedAppList(selectedApps);
                         // DatabaseService.updateUsageLimits();
+
+                        await ApiDatabase.insertUsageLimitList(
+                            selectedApps, listAppscontroller.maxUsageTime);
+
+                        DatabaseService.updateUsageLimits();
                       },
                       child: Container(
                         margin: EdgeInsets.only(bottom: 10),

@@ -35,7 +35,6 @@ class AppMonitorService : Service() {
     private var totalUsageTime = 0 // Tiempo de uso total en segundos
     private var isScreenOn = true // Estado de la pantalla
     private var hasShownLimitPopup = false // Variable para controlar si el popup ya fue mostrado
-    // private val usageLimitInSeconds = 15 * 60 // 15 minutos
     private var usageLimits: MutableMap<String, Int> = mutableMapOf() // Mapa para los límites de uso por paquete
 
     private var remainingExtraTime = 0 // Tiempo extra restante en segundos
@@ -45,13 +44,6 @@ class AppMonitorService : Service() {
     private var allowedPackages: List<String> = emptyList()
 
 
-    // // Lista de paquetes permitidos
-    // private val allowedPackages = listOf(
-    //     "com.whatsapp",       // WhatsApp
-    //     "com.facebook.katana", // Facebook
-    //     "com.instagram.android", // Instagram
-    //     // Agrega más paquetes según lo necesites
-    // )
 
     // BroadcastReceiver para manejar el estado de la pantalla
     private val screenStateReceiver = object : BroadcastReceiver() {
@@ -165,8 +157,18 @@ class AppMonitorService : Service() {
             } else {
                 // Si el paquete no está permitido, detener el seguimiento
                 Log.d("AppMonitorServiceDENEGADA", "App DENEGADA: $currentApp  list $allowedPackages ")
-                lastAppPackage?.let { stopTracking(it) }
-                lastAppPackage = null // Restablecer el paquete actual
+                loadAllowedPackagesFromDatabase()
+                if (allowedPackages.contains(currentApp)) {
+                    if (currentApp != lastAppPackage) {
+                        lastAppPackage?.let { stopTracking(it) }
+                        startTracking(currentApp)
+                        lastAppPackage = currentApp
+                    }
+                }else{
+                    lastAppPackage?.let { stopTracking(it) }
+                    lastAppPackage = null // Restablecer el paquete actual
+                }
+
             }
         }
     }
@@ -174,6 +176,7 @@ class AppMonitorService : Service() {
     private fun startTracking(packageName: String) {
         totalUsageTime = getAppUsageTime(packageName)
         Log.d("AppMonitorService", "App abierta: $packageName - Tiempo acumulado: ${formatTime(totalUsageTime)}")
+
 
         // Obtiene el límite de uso para este paquete específico
         val usageLimitInSeconds = usageLimits[packageName] ?: 15 * 60 // Usa 15 minutos como valor predeterminado si no se encuentra
@@ -310,18 +313,6 @@ class AppMonitorService : Service() {
         Log.d("AppMonitorService", "Se ha añadido 1 minuto extra a $packageName")
     }
 
-     // Función para hacer vibrar el teléfono
-    // private fun vibratePhone() {
-    //     val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-    //     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-    //         // Para versiones de Android O (API 26) y superiores
-    //         val vibrationEffect = VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE) // Vibrar por 500ms
-    //         vibrator.vibrate(vibrationEffect)
-    //     } else {
-    //         // Para versiones anteriores
-    //         vibrator.vibrate(500) // Vibrar por 500ms
-    //     }
-    // }
     private fun vibratePhone() {
         val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
