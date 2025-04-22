@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -40,6 +42,17 @@ class _NativeCommunicationScreenState extends State<NativeCommunicationScreen> {
     }
   }
 
+  Future<bool> checkAccessibility() async {
+    final int result =
+        await platformTime.invokeMethod('isAccessibilityEnabled');
+    log(' ===== result = $result');
+    return result == 1;
+  }
+
+  Future<void> requestAccessibilityPermission() async {
+    await platformTime.invokeMethod('openAccessibilitySettings');
+  }
+
   // Método para escuchar mensajes desde Kotlin
   Future<void> listenForKotlinMessages() async {
     platform.setMethodCallHandler((call) async {
@@ -77,7 +90,28 @@ class _NativeCommunicationScreenState extends State<NativeCommunicationScreen> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [],
+          children: [
+            GestureDetector(
+              onTap: () {
+                checkAccessibility();
+              },
+              child: Container(
+                padding: EdgeInsets.all(20),
+                color: Colors.green,
+                child: Text('Preguntar'),
+              ),
+            ),
+            GestureDetector(
+              onTap: () {
+                requestAccessibilityPermission();
+              },
+              child: Container(
+                padding: EdgeInsets.all(20),
+                color: Colors.green,
+                child: Text('Solicitar'),
+              ),
+            )
+          ],
         ),
       ),
     );

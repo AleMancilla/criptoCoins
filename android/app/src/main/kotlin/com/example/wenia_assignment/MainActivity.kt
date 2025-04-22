@@ -31,6 +31,8 @@ import android.view.Gravity
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.accessibility.AccessibilityManager
 
+import android.content.ComponentName
+import android.text.TextUtils
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.alecodeando/native"
@@ -161,11 +163,25 @@ class MainActivity: FlutterActivity() {
         }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNELTIMESERVICE).setMethodCallHandler { call, result ->
-            if (call.method == "startService") {
-                openAccessibilitySettings(this)
-                result.success("Service started")
-            } else {
-                result.notImplemented()
+            when (call.method) {
+                
+                "startService" -> {
+                    openAccessibilitySettings(this)
+                    result.success("1") // 1 = true, 0 = false
+                }
+                "isAccessibilityEnabled" -> {
+                    // Cambia por el nombre de tu servicio real
+                    val serviceId = "com.alecodeando.weniatest/.AppMonitorService"
+                    val isEnabled = isAccessibilityServiceEnabled(this)
+                    result.success(if (isEnabled) 1 else 0)
+                }
+                "openAccessibilitySettings" -> {
+                    openAccessibilitySettings(this)
+                    result.success("1")
+                }
+                else -> {
+                    result.notImplemented()
+                }
             }
         }
 
@@ -232,6 +248,27 @@ class MainActivity: FlutterActivity() {
         val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
+    }
+
+
+
+    fun isAccessibilityServiceEnabled(context: Context): Boolean {
+        val serviceId = "com.alecodeando.weniatest/.AppMonitorService"
+        val expectedComponentName = ComponentName.unflattenFromString(serviceId)
+        val enabledServices = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+
+        val colonSplitter = TextUtils.SimpleStringSplitter(':')
+        colonSplitter.setString(enabledServices)
+
+        for (service in colonSplitter) {
+            if (ComponentName.unflattenFromString(service) == expectedComponentName) {
+                return true
+            }
+        }
+        return false
     }
     
     private fun showFloatingWidget() {
