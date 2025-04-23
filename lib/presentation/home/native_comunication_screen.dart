@@ -110,10 +110,25 @@ class _NativeCommunicationScreenState extends State<NativeCommunicationScreen> {
                 color: Colors.green,
                 child: Text('Solicitar'),
               ),
-            )
+            ),
+            GestureDetector(
+              onTap: () {
+                startOverlay();
+              },
+              child: Container(
+                padding: EdgeInsets.all(20),
+                color: Colors.blue,
+                child: Text('SHOW'),
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  static const _channel = MethodChannel('app/overlay');
+  Future<void> startOverlay() async {
+    await _channel.invokeMethod('startOverlayService');
   }
 }

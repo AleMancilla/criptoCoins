@@ -33,6 +33,7 @@ import android.view.accessibility.AccessibilityManager
 
 import android.content.ComponentName
 import android.text.TextUtils
+import androidx.core.content.ContextCompat
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.alecodeando/native"
@@ -40,6 +41,8 @@ class MainActivity: FlutterActivity() {
     private val CHANNELFLOATING = "com.example.wenia_assignment/floating_widget"
 
     private val CHANNELDB = "com.example.wenia_assignment/database"
+
+    private val CHANNELOVERLAY = "app/overlay"
     
     // Definir la vista flotante
     private lateinit var floatingView: View
@@ -58,12 +61,20 @@ class MainActivity: FlutterActivity() {
                     result.success("Base de datos inicializada en Kotlin")
                 }
                 "updateUsageLimits" -> {
-                    Log.e("Error in channel", "ENTROOOOOOOOOOOOOOOOOOO XD")
+                        // Ya no abrimos ajustes de accesibilidad, 
+                        // simplemente arrancamos AppMonitorService con overlay
+                        startAppMonitorWithOverlay { started ->
+                            if (started) result.success("Service arrancado")
+                            else       result.error("PERM_DENIED", "Overlay permission required", null)
+                        }
+                    }
+                // "updateUsageLimits" -> {
+                //     Log.e("Error in channel", "ENTROOOOOOOOOOOOOOOOOOO XD")
 
-                    val appMonitorServiceIntent = Intent(this, AppMonitorService::class.java)
-                    startService(appMonitorServiceIntent)
-                    result.success("Usage limits updated in service.")
-                }
+                //     val appMonitorServiceIntent = Intent(this, AppMonitorService::class.java)
+                //     startService(appMonitorServiceIntent)
+                //     result.success("Usage limits updated in service.")
+                // }
                 "insertUser" -> {
                     val username = call.argument<String>("username") ?: ""
                     val email = call.argument<String>("email") ?: ""
@@ -145,6 +156,24 @@ class MainActivity: FlutterActivity() {
         startSendingMessagesToFlutter() // Iniciar envío de mensajes después de reanudar la actividad
     }
 
+
+    private fun startAppMonitorWithOverlay(onResult: (started: Boolean) -> Unit) {
+        if (!Settings.canDrawOverlays(this)) {
+            // Abre la pantalla de permisos
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+            startActivity(intent)
+            onResult(false)
+        } else {
+            // Ya tengo permiso → arranco servicio
+            val svcIntent = Intent(this, AppMonitorService::class.java)
+            ContextCompat.startForegroundService(this, svcIntent)
+            onResult(true)
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         dbHelper = DatabaseHelper(this)
@@ -165,10 +194,15 @@ class MainActivity: FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNELTIMESERVICE).setMethodCallHandler { call, result ->
             when (call.method) {
                 
+                // "startService" -> {
+                //     openAccessibilitySettings(this)
+                //     result.success("1") // 1 = true, 0 = false
+                // }
                 "startService" -> {
-                    openAccessibilitySettings(this)
-                    result.success("1") // 1 = true, 0 = false
-                }
+                        startAppMonitorWithOverlay { started ->
+                            result.success(if (started) 1 else 0)
+                        }
+                    }
                 "isAccessibilityEnabled" -> {
                     // Cambia por el nombre de tu servicio real
                     val serviceId = "com.alecodeando.weniatest/.AppMonitorService"
@@ -195,26 +229,35 @@ class MainActivity: FlutterActivity() {
             }
         }
 
-         
-        // Establecer el canal de método para comunicarse con Flutter
-        // MethodChannel(flutterEngine!!.dartExecutor.binaryMessenger, CHANNELDB).setMethodCallHandler { call, result ->
-        //     when (call.method) {
-        //        "getUsers" -> {
-        //             val users = getUsers() // Asegúrate de que este método exista
-        //             result.success(users)
-        //         }
-        //        "updateUsageLimits" -> {
-        //             Log.e("Error in channel", "ENTROOOOOOOOOOOOOOOOOOO XD")
-
-        //             val appMonitorServiceIntent = Intent(this, AppMonitorService::class.java)
-        //             startService(appMonitorServiceIntent)
-        //             result.success("Usage limits updated in service.")
-        //         }
-        //         else -> {
-        //             result.notImplemented()
-        //         }
-        //     }
-        // }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNELOVERLAY).setMethodCallHandler { call, result ->
+            when (call.method) {
+                // "startOverlayService" -> {
+                //     val intent = Intent(this, OverlayService::class.java)
+                //     ContextCompat.startForegroundService(this, intent)
+                //     result.success(null)
+                // }
+                // "stopOverlayService" -> {
+                //     stopService(Intent(this, OverlayService::class.java))
+                //     result.success(null)
+                // }
+                "startOverlayService" -> {
+                    startAppMonitorWithOverlay { started ->
+                        if (started) result.success(null)
+                        else         result.error("PERM_DENIED", "Overlay permission required", null)
+                    }
+                }
+                "stopOverlayService" -> {
+                    stopService(Intent(this, AppMonitorService::class.java))
+                    result.success(null)
+                }
+                "updateCounter" -> {
+                    val newCount = call.argument<Int>("value") ?: 0
+                    // Envía un broadcast o usa bindService para pasar el valor al overlayView
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
     }
 
     private fun getUsers(): List<Map<String, Any>> {

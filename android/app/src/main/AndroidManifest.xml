@@ -2,7 +2,8 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.SYSTEM_OVERLAY_WINDOW" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE " />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.VIBRATE"/>
@@ -44,10 +45,21 @@
             android:value="2" />
     <service
            android:name="com.requiemz.overlay_pop_up.OverlayService"
-           android:exported="false"/>
+           android:exported="false"
+            android:foregroundServiceType="dataSync"/>
+    <!-- android:permission="android.permission.SYSTEM_ALERT_WINDOW" -->
     <service
         android:name=".FloatingWidgetService"
-        android:permission="android.permission.SYSTEM_ALERT_WINDOW"/>
+        android:exported="false"
+        android:foregroundServiceType="dataSync"/>
+    <service
+        android:name=".OverlayService"
+        android:exported="false"
+        android:foregroundServiceType="dataSync">
+    </service>
+
+    
+
     <service
         android:name=".TimeService"
         android:enabled="true"
