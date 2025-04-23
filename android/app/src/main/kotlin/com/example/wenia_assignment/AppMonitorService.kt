@@ -1,39 +1,41 @@
 package com.alecodeando.weniatest
 
-import android.app.usage.UsageStatsManager
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
 import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.app.Service
+import android.graphics.PixelFormat
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.util.Log
-import java.util.Calendar
-
-import android.graphics.PixelFormat
-import android.os.Build
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
-import android.os.VibrationEffect
-import android.os.Vibrator
-import com.alecodeando.weniatest.DatabaseHelper
-
-import android.content.*
-import android.os.*
-import android.view.*
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import java.util.Calendar
 import java.util.*
 
 class AppMonitorService : Service() {
 
-    // --- LÓGICA DE FOREGROUND MONITORING (igual que antes) ---
+    companion object {
+        private const val NOTIF_ID = 1
+        private const val CHANNEL_ID = "app_monitor_channel"
+    }
+
+    // --- LÓGICA DE MONITOREO ---
     private val handler = Handler(Looper.getMainLooper())
     private var monitorRunnable: Runnable? = null
 
@@ -44,114 +46,79 @@ class AppMonitorService : Service() {
     private var isScreenOn = true
     private var hasShownLimitPopup = false
     private var usageLimits: MutableMap<String, Int> = mutableMapOf()
-    private var extraTimePerApp = mutableMapOf<String, Int>()
+    private var extraTimePerApp: MutableMap<String, Int> = mutableMapOf()
     private var allowedPackages: List<String> = emptyList()
 
-    // BroadcastReceiver para eventos de pantalla
+    // Receiver para eventos de pantalla
     private val screenStateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(c: Context?, intent: Intent?) {
+        override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> {
                     isScreenOn = false
                     stopTracking(lastAppPackage)
                     Log.d("AppMonitorService", "Pantalla apagada")
-
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     isScreenOn = true
                     lastAppPackage?.let { startTracking(it) }
                     Log.d("AppMonitorService", "Pantalla encendida")
-
                 }
             }
         }
     }
 
-    // --- NUEVAS PROPIEDADES PARA OVERLAY ---
+    // Propiedades para overlay
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
     private lateinit var overlayParams: WindowManager.LayoutParams
 
     override fun onCreate() {
-        Log.d("___________________2AppMonitorService", "Allowed packages loaded: XS")
         super.onCreate()
+        createNotificationChannel()
 
-        // Inicializa UsageStats
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-
-        // Carga límites y paquetes permitidos
         loadAllowedPackagesFromDatabase()
-
-        // Prepara WindowManager y parámetros del overlay
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         setupOverlayParams()
 
-        // Registra receiver de pantalla
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
         }
         registerReceiver(screenStateReceiver, filter)
+    }
 
-        // Comienza monitoreo
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // 1) Recarga límites de uso siempre
+        loadAllowedPackagesFromDatabase()
+        Log.d("AppMonitorService", "Allowed after reload: $allowedPackages")
+
+        // 2) Construye y lanza tu notificación de foreground
+        val notification = Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle("App Monitor Activo")
+            .setContentText("Supervisando uso de aplicaciones…")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setOngoing(true)
+            .build()
+        startForeground(NOTIF_ID, notification)
+
+        // 3) Inicia monitoreo
         startMonitoring()
+        return START_STICKY
     }
 
-    // Función para cargar los nombres de paquetes desde la base de datos
-    private fun loadAllowedPackagesFromDatabase() {
-        val dbHelper = DatabaseHelper(this)
-        val usageLimitsFromDb = dbHelper.getAllUsageLimits() // Obtener todos los UsageLimit
 
-        allowedPackages = usageLimitsFromDb.map { it.packageName } // Asignar los nombres de los paquetes
+    override fun onBind(intent: Intent?): IBinder? = null
 
-        // Llenar el mapa de límites de uso
-        usageLimitsFromDb.forEach {
-            usageLimits[it.packageName] = it.limitTime // Asigna el límite a su paquete correspondiente
-        }
-
-        Log.d("___________________AppMonitorService", "Allowed packages loaded: $allowedPackages")
-    }
-
-    // Configura los LayoutParams para el overlay
-    private fun setupOverlayParams() {
-        overlayParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 0
-            y = 100
-        }
-    }
-
-    // Agrega el overlay si no existe
-    private fun showOverlay() {
-        if (overlayView != null) return
-        overlayView = LayoutInflater.from(this)
-            .inflate(R.layout.view_overlay_counter, null)
-        windowManager.addView(overlayView, overlayParams)
-    }
-
-    // Actualiza solo el texto del contador
-    private fun updateOverlay(time: String) {
-        overlayView
-            ?.findViewById<TextView>(R.id.overlay_text)
-            ?.text = time
-    }
-
-    // Remueve el overlay
-    private fun hideOverlay() {
-        overlayView?.let {
-            windowManager.removeView(it)
-            overlayView = null
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val chan = NotificationChannel(
+                CHANNEL_ID,
+                "Monitor de uso de apps",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply { description = "Notificaciones del servicio de monitoreo" }
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(chan)
         }
     }
 
@@ -176,7 +143,7 @@ class AppMonitorService : Service() {
         }
         lastEvent?.let { ev ->
             val pkg = ev.packageName
-            if (pkg == packageName) return  // ignorar self
+            if (pkg == packageName) return
             if (allowedPackages.contains(pkg)) {
                 if (pkg != lastAppPackage) {
                     stopTracking(lastAppPackage)
@@ -184,7 +151,6 @@ class AppMonitorService : Service() {
                     lastAppPackage = pkg
                 }
             } else {
-                // lógica de recarga y negación de paquete
                 Log.d("AppMonitorServiceDENEGADA", "App DENEGADA: $pkg  list $allowedPackages ")
                 loadAllowedPackagesFromDatabase()
                 if (!allowedPackages.contains(pkg)) {
@@ -195,27 +161,24 @@ class AppMonitorService : Service() {
         }
     }
 
-    private fun startTracking(packageName: String) {
-        // Inicializa contador y muestra overlay
-        Log.d("AppMonitorService", "App abierta: $packageName - Tiempo acumulado: ${formatTime(totalUsageTime)}")
-        totalUsageTime = getAppUsageTime(packageName)
+    private fun startTracking(pkg: String) {
+        totalUsageTime = getAppUsageTime(pkg)
         showOverlay()
 
-        val limitSecs = usageLimits[packageName] ?: (15 * 60)
+        val limitSecs = usageLimits[pkg] ?: (15 * 60)
         appTimerRunnable = object : Runnable {
             override fun run() {
                 totalUsageTime++
                 val txt = formatTime(totalUsageTime)
-                Log.d("AppMonitorService", "App en uso: $packageName - Tiempo: $txt")
+                Log.d("AppMonitorService", "App en uso: $pkg - Tiempo: $txt")
                 updateOverlay(txt)
 
-                val extra = extraTimePerApp[packageName] ?: 0
+                val extra = extraTimePerApp[pkg] ?: 0
                 if (totalUsageTime >= limitSecs && extra <= 0 && !hasShownLimitPopup) {
-                    showUsageLimitPopup(packageName)
+                    showUsageLimitPopup(pkg)
                     hasShownLimitPopup = true
                 } else if (extra > 0) {
-                    extraTimePerApp[packageName] = extra - 1
-                    Log.d("AppMonitorService", "Tiempo extra restante para $packageName: ${extraTimePerApp[packageName]}")
+                    extraTimePerApp[pkg] = extra - 1
                 }
                 handler.postDelayed(this, 1000)
             }
@@ -223,12 +186,11 @@ class AppMonitorService : Service() {
         handler.post(appTimerRunnable!!)
     }
 
-    private fun stopTracking(packageName: String?) {
+    private fun stopTracking(pkg: String?) {
         appTimerRunnable?.let { handler.removeCallbacks(it) }
         hideOverlay()
-        packageName?.let {
+        pkg?.let {
             Log.d("AppMonitorService", "Cerrando $it → total ${formatTime(getAppUsageTime(it))}")
-            // tu lógica de popup o persistencia de tiempo extra
         }
     }
 
@@ -250,9 +212,59 @@ class AppMonitorService : Service() {
         return String.format("%02d:%02d:%02d", h, m, s)
     }
 
-    // ... el resto de tus métodos: loadAllowedPackagesFromDatabase(),
-    // updateUsageLimits(), showUsageLimitPopup(...), extendUsageTime(...), vibratePhone(), etc.
+    // Métodos de overlay
+    private fun setupOverlayParams() {
+        overlayParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 0
+            y = 100
+        }
+    }
 
+    private fun showOverlay() {
+        if (overlayView != null) return
+        overlayView = LayoutInflater.from(this)
+            .inflate(R.layout.view_overlay_counter, null)
+        windowManager.addView(overlayView, overlayParams)
+    }
+
+    private fun updateOverlay(time: String) {
+        overlayView?.findViewById<TextView>(R.id.overlay_text)?.text = time
+    }
+
+    private fun hideOverlay() {
+        overlayView?.let {
+            windowManager.removeView(it)
+            overlayView = null
+        }
+    }
+
+    
+    // Función para cargar los nombres de paquetes desde la base de datos
+    private fun loadAllowedPackagesFromDatabase() {
+        val dbHelper = DatabaseHelper(this)
+        val usageLimitsFromDb = dbHelper.getAllUsageLimits() // Obtener todos los UsageLimit
+
+        allowedPackages = usageLimitsFromDb.map { it.packageName } // Asignar los nombres de los paquetes
+
+        // Llenar el mapa de límites de uso
+        usageLimitsFromDb.forEach {
+            usageLimits[it.packageName] = it.limitTime // Asigna el límite a su paquete correspondiente
+        }
+
+        Log.d("___________________AppMonitorService", "Allowed packages loaded: $allowedPackages")
+    }
     override fun onDestroy() {
         super.onDestroy()
         monitorRunnable?.let { handler.removeCallbacks(it) }
@@ -322,9 +334,8 @@ class AppMonitorService : Service() {
             vibrator.vibrate(pattern, -1) // -1 indica que no se repite el patrón
         }
     }
-
-    override fun onBind(intent: Intent?) = null
 }
+
 
 
 data class UsageLimit(
