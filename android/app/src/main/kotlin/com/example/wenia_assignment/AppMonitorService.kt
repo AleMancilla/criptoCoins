@@ -27,6 +27,11 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import java.util.Calendar
 import java.util.*
+import android.view.MotionEvent
+import android.graphics.Color
+
+import android.widget.FrameLayout
+
 
 class AppMonitorService : Service() {
 
@@ -171,7 +176,7 @@ class AppMonitorService : Service() {
                 totalUsageTime++
                 val txt = formatTime(totalUsageTime)
                 Log.d("AppMonitorService", "App en uso: $pkg - Tiempo: $txt")
-                updateOverlay(txt)
+                updateOverlay(txt, totalUsageTime)
 
                 val extra = extraTimePerApp[pkg] ?: 0
                 if (totalUsageTime >= limitSecs && extra <= 0 && !hasShownLimitPopup) {
@@ -234,13 +239,66 @@ class AppMonitorService : Service() {
 
     private fun showOverlay() {
         if (overlayView != null) return
+
+        // Infla la vista
         overlayView = LayoutInflater.from(this)
             .inflate(R.layout.view_overlay_counter, null)
         windowManager.addView(overlayView, overlayParams)
+
+        // Variables de estado para el drag
+        var initialX = 0
+        var initialY = 0
+        var touchStartX = 0f
+        var touchStartY = 0f
+
+        // Listener para mover la vista
+        overlayView?.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    // Guarda posición inicial
+                    initialX = overlayParams.x
+                    initialY = overlayParams.y
+                    touchStartX = event.rawX
+                    touchStartY = event.rawY
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    // Calcula delta y actualiza params
+                    overlayParams.x = initialX + (event.rawX - touchStartX).toInt()
+                    overlayParams.y = initialY + (event.rawY - touchStartY).toInt()
+                    windowManager.updateViewLayout(overlayView, overlayParams)
+                    true
+                }
+                else -> false
+            }
+        }
     }
 
-    private fun updateOverlay(time: String) {
-        overlayView?.findViewById<TextView>(R.id.overlay_text)?.text = time
+
+    private fun updateOverlay(timeStr: String, seconds: Int) {
+        // 1) Actualiza el texto
+        val tv = overlayView
+            ?.findViewById<TextView>(R.id.overlay_text)
+            ?: return
+        tv.text = timeStr
+        // siempre texto blanco
+        tv.setTextColor(Color.WHITE)
+
+        // 2) Calcula color de fondo según thresholds
+        val orangeThreshold = 15 * 60    // 15 minutos
+        val redThreshold    = 30 * 60    // 30 minutos (ajusta a 30 si son segundos)
+
+        val bgColor = when {
+            seconds >= redThreshold    -> Color.RED
+            seconds >= orangeThreshold -> Color.parseColor("#FFA500")
+            else                       -> Color.TRANSPARENT
+        }
+
+        // 3) Aplica el color de fondo al contenedor
+        val root = overlayView
+            ?.findViewById<FrameLayout>(R.id.overlay_root)
+            ?: overlayView!!
+        root.setBackgroundColor(bgColor)
     }
 
     private fun hideOverlay() {
