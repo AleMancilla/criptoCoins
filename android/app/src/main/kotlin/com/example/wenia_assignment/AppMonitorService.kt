@@ -29,6 +29,7 @@ import java.util.Calendar
 import java.util.*
 import android.view.MotionEvent
 import android.graphics.Color
+import android.content.SharedPreferences
 
 import android.widget.FrameLayout
 
@@ -38,7 +39,14 @@ class AppMonitorService : Service() {
     companion object {
         private const val NOTIF_ID = 1
         private const val CHANNEL_ID = "app_monitor_channel"
+        // 🔧 Nombre de SharedPreferences y prefijo de clave
+        private const val PREFS_NAME = "app_monitor_prefs"
+        private const val KEY_PREFIX_USAGE = "usage_"
     }
+
+
+    // 🔧 SharedPreferences para persistencia
+    private lateinit var prefs: SharedPreferences
 
     // --- LÓGICA DE MONITOREO ---
     private val handler = Handler(Looper.getMainLooper())
@@ -77,10 +85,16 @@ class AppMonitorService : Service() {
     private var overlayView: View? = null
     private lateinit var overlayParams: WindowManager.LayoutParams
 
+    
+    // Receiver para eventos de pantalla...
+    // Propiedades para overlay...
+    
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        // 🔧 Inicializa SharedPreferences
+        prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+        createNotificationChannel()
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         loadAllowedPackagesFromDatabase()
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
@@ -92,6 +106,14 @@ class AppMonitorService : Service() {
         }
         registerReceiver(screenStateReceiver, filter)
     }
+
+    // 🔧 Aseguramos guardar al “swipear” la app
+    override fun onTaskRemoved(rootIntent: Intent) {
+        lastAppPackage?.let { saveUsageTime(it, totalUsageTime) }
+        super.onTaskRemoved(rootIntent)
+        stopSelf()
+    }
+
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // 1) Recarga límites de uso siempre
@@ -167,7 +189,11 @@ class AppMonitorService : Service() {
     }
 
     private fun startTracking(pkg: String) {
-        totalUsageTime = getAppUsageTime(pkg)
+        // 🔧 Restaura de prefs o, si no existe, usa UsageStats
+        totalUsageTime = prefs.getInt("$KEY_PREFIX_USAGE$pkg", -1).let {
+            if (it >= 0) it else getAppUsageTime(pkg)
+        }
+
         showOverlay()
 
         val limitSecs = usageLimits[pkg] ?: (15 * 60)
@@ -177,6 +203,9 @@ class AppMonitorService : Service() {
                 val txt = formatTime(totalUsageTime)
                 Log.d("AppMonitorService", "App en uso: $pkg - Tiempo: $txt")
                 updateOverlay(txt, totalUsageTime)
+
+                // 🔧 Cada tick guardamos el nuevo valor
+                saveUsageTime(pkg, totalUsageTime)
 
                 val extra = extraTimePerApp[pkg] ?: 0
                 if (totalUsageTime >= limitSecs && extra <= 0 && !hasShownLimitPopup) {
@@ -189,14 +218,24 @@ class AppMonitorService : Service() {
             }
         }
         handler.post(appTimerRunnable!!)
+        lastAppPackage = pkg
     }
 
     private fun stopTracking(pkg: String?) {
         appTimerRunnable?.let { handler.removeCallbacks(it) }
-        hideOverlay()
         pkg?.let {
-            Log.d("AppMonitorService", "Cerrando $it → total ${formatTime(getAppUsageTime(it))}")
+            // 🔧 Guardamos al detener el tracking
+            saveUsageTime(it, totalUsageTime)
+            Log.d("AppMonitorService", "Cerrando $it → total ${formatTime(totalUsageTime)}")
         }
+        hideOverlay()
+    }
+
+    // 🔧 Funciones auxiliares de persistencia
+    private fun saveUsageTime(pkg: String, time: Int) {
+        prefs.edit()
+            .putInt("$KEY_PREFIX_USAGE$pkg", time)
+            .apply()
     }
 
     private fun getAppUsageTime(pkg: String): Int {
@@ -245,13 +284,17 @@ class AppMonitorService : Service() {
             .inflate(R.layout.view_overlay_counter, null)
         windowManager.addView(overlayView, overlayParams)
 
+        // Métricas de pantalla
+        val displayMetrics = resources.displayMetrics
+        val screenWidth = displayMetrics.widthPixels
+        val screenHeight = displayMetrics.heightPixels
+
         // Variables de estado para el drag
         var initialX = 0
         var initialY = 0
         var touchStartX = 0f
         var touchStartY = 0f
 
-        // Listener para mover la vista
         overlayView?.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -263,16 +306,26 @@ class AppMonitorService : Service() {
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    // Calcula delta y actualiza params
-                    overlayParams.x = initialX + (event.rawX - touchStartX).toInt()
-                    overlayParams.y = initialY + (event.rawY - touchStartY).toInt()
-                    windowManager.updateViewLayout(overlayView, overlayParams)
+                    // Calcula nueva posición sin límites
+                    val newX = initialX + (event.rawX - touchStartX).toInt()
+                    val newY = initialY + (event.rawY - touchStartY).toInt()
+
+                    // Calcula tamaño de la vista (ya inflada y medida)
+                    val viewWidth = v.width
+                    val viewHeight = v.height
+
+                    // Clamp: recorta X e Y dentro de la pantalla
+                    overlayParams.x = newX.coerceIn(0, screenWidth - viewWidth)
+                    overlayParams.y = newY.coerceIn(0, screenHeight - viewHeight)
+
+                    windowManager.updateViewLayout(v, overlayParams)
                     true
                 }
                 else -> false
             }
         }
     }
+
 
 
     private fun updateOverlay(timeStr: String, seconds: Int) {
@@ -324,11 +377,13 @@ class AppMonitorService : Service() {
         Log.d("___________________AppMonitorService", "Allowed packages loaded: $allowedPackages")
     }
     override fun onDestroy() {
-        super.onDestroy()
+        // 🔧 Guardado final por si onTaskRemoved no se llamó
+        lastAppPackage?.let { saveUsageTime(it, totalUsageTime) }
         monitorRunnable?.let { handler.removeCallbacks(it) }
         appTimerRunnable?.let { handler.removeCallbacks(it) }
         unregisterReceiver(screenStateReceiver)
         hideOverlay()
+        super.onDestroy()
     }
 
 
