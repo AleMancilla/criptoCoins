@@ -387,42 +387,61 @@ class AppMonitorService : Service() {
     }
 
 
-    // Función para mostrar el popup cuando el tiempo de uso es excedido
     private fun showUsageLimitPopup(packageName: String) {
-        // Crear un LayoutInflater para inflar el diseño personalizado del popup
+        // 1) Envía al Home para pausar la app de fondo
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        startActivity(homeIntent)
+
+        // 2) Infla tu layout de popup
         val inflater = getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
         val popupView = inflater.inflate(R.layout.usage_limit_popup, null)
 
-        // Configurar los parámetros del popup para que se muestre sobre cualquier app
+        // 3) Parámetros full-screen y focusable
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
-        )
-        params.gravity = Gravity.CENTER
+        ).apply { gravity = Gravity.CENTER }
 
-        // Agregar la vista al WindowManager
+        // 4) Muestra el popup
         val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         windowManager.addView(popupView, params)
 
-        // Configurar el botón de cerrar dentro del popup
+        // Botón “1 Minuto Más”
+        val oneMoreMinuteButton = popupView.findViewById<Button>(R.id.one_more_minute_button)
+        oneMoreMinuteButton.setOnClickListener {
+            // ✅ Amplía el tiempo
+            extendUsageTime(packageName)
+            // ✅ Quita el popup
+            windowManager.removeView(popupView)
+
+            // 🔧 Relanza automáticamente la app
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            if (launchIntent != null) {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(launchIntent)
+            }
+        }
+
+        // Botón Cerrar
         val closeButton = popupView.findViewById<Button>(R.id.close_popup_button)
         closeButton.setOnClickListener {
             windowManager.removeView(popupView)
         }
 
-        // Configurar el botón de "1 minuto más"
-        val oneMoreMinuteButton = popupView.findViewById<Button>(R.id.one_more_minute_button)
-        oneMoreMinuteButton.setOnClickListener {
-            extendUsageTime(packageName)
-            windowManager.removeView(popupView)
-        }
-
-        // Vibrar cuando el popup se muestre
+        // Vibrar al mostrar
         vibratePhone()
     }
+
 
 
      // Método para extender el tiempo de uso en 1 minuto
