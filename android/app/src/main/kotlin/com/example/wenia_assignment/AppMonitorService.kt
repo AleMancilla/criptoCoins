@@ -201,13 +201,13 @@ class AppMonitorService : Service() {
             override fun run() {
                 totalUsageTime++
                 val txt = formatTime(totalUsageTime)
-                Log.d("AppMonitorService", "App en uso: $pkg - Tiempo: $txt")
-                updateOverlay(txt, totalUsageTime)
+                updateOverlay(txt, totalUsageTime,limitSecs)
 
                 // 🔧 Cada tick guardamos el nuevo valor
                 saveUsageTime(pkg, totalUsageTime)
 
                 val extra = extraTimePerApp[pkg] ?: 0
+                Log.d("AppMonitorService", "App en uso: $pkg - Tiempo: $txt ___ limite $totalUsageTime >= limitSecs = $limitSecs == extra = $extra ___ $hasShownLimitPopup")
                 if (totalUsageTime >= limitSecs && extra <= 0 && !hasShownLimitPopup) {
                     showUsageLimitPopup(pkg)
                     hasShownLimitPopup = true
@@ -328,7 +328,7 @@ class AppMonitorService : Service() {
 
 
 
-    private fun updateOverlay(timeStr: String, seconds: Int) {
+    private fun updateOverlay(timeStr: String, seconds: Int, limitSeconds: Int) {
         // 1) Actualiza el texto
         val tv = overlayView
             ?.findViewById<TextView>(R.id.overlay_text)
@@ -338,13 +338,13 @@ class AppMonitorService : Service() {
         tv.setTextColor(Color.WHITE)
 
         // 2) Calcula color de fondo según thresholds
-        val orangeThreshold = 15 * 60    // 15 minutos
-        val redThreshold    = 30 * 60    // 30 minutos (ajusta a 30 si son segundos)
+        val orangeThreshold = limitSeconds/2    // 15 minutos
+        val redThreshold    = limitSeconds    // 30 minutos (ajusta a 30 si son segundos)
 
         val bgColor = when {
-            seconds >= redThreshold    -> Color.RED
-            seconds >= orangeThreshold -> Color.parseColor("#FFA500")
-            else                       -> Color.TRANSPARENT
+            seconds >= redThreshold    -> Color.parseColor("#E60F00")
+            seconds >= orangeThreshold -> Color.parseColor("#E6C701")
+            else                       -> Color.parseColor("#1B5E20")
         }
 
         // 3) Aplica el color de fondo al contenedor
