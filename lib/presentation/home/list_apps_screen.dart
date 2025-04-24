@@ -1,6 +1,8 @@
-import 'package:device_apps/device_apps.dart';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:installed_apps/index.dart';
 import 'package:wenia_assignment/core/database/api_database.dart';
 import 'package:wenia_assignment/core/database/databaseservice.dart';
 import 'package:wenia_assignment/core/theme/custom_colors.dart';
@@ -23,6 +25,8 @@ class _ListAppsScreenState extends State<ListAppsScreen> {
   @override
   Widget build(BuildContext context) {
     print(homecontroller.listAppUsageInfo);
+    print(listAppscontroller.apps);
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Aplicaciones instaladas'),
@@ -42,10 +46,10 @@ class _ListAppsScreenState extends State<ListAppsScreen> {
                       itemCount: listAppscontroller.filteredApps.length,
                       padding: EdgeInsets.all(0),
                       itemBuilder: (context, index) {
-                        Application app =
-                            listAppscontroller.filteredApps[index];
+                        AppInfo app = listAppscontroller.filteredApps[index];
                         Duration? usageTime =
                             listAppscontroller.appUsageStats[app.packageName];
+                        print(listAppscontroller.appUsageStats);
 
                         bool isSelected = listAppscontroller.appsSelectable
                             .contains(app.packageName);
@@ -87,14 +91,14 @@ class _ListAppsScreenState extends State<ListAppsScreen> {
                                           : CustomColors.background3,
                                     )
                                   : null,
-                              leading: app is ApplicationWithIcon
+                              leading: (app.icon != null)
                                   ? Image.memory(
-                                      app.icon,
+                                      app.icon!,
                                       width: 40,
                                       height: 40,
                                     )
                                   : const Icon(Icons.android),
-                              title: Text(app.appName),
+                              title: Text(app.name),
                               subtitle: Text(
                                 'Hoy lo usaste: ${listAppscontroller.formatDuration(usageTime ?? Duration())}',
                                 style: TextStyle(fontSize: 12),
@@ -134,7 +138,7 @@ class _ListAppsScreenState extends State<ListAppsScreen> {
                       onTap: () async {
                         edit = false;
                         setState(() {});
-                        List<Application> selectedApps = listAppscontroller.apps
+                        List<AppInfo> selectedApps = listAppscontroller.apps
                             .where((app) => listAppscontroller.appsSelectable
                                 .contains(app.packageName))
                             .toList();

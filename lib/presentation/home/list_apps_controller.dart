@@ -1,13 +1,16 @@
-import 'package:device_apps/device_apps.dart';
+import 'dart:developer';
+
 import 'package:get/get.dart';
+import 'package:installed_apps/index.dart';
+import 'package:installed_apps/installed_apps.dart';
 import 'package:usage_stats/usage_stats.dart';
 import 'package:wenia_assignment/core/database/api_database.dart';
 import 'package:wenia_assignment/core/database/models/model_db_allowed_apps.dart';
 import 'package:wenia_assignment/core/database/models/model_db_usage_limits.dart';
 
 class ListAppsController extends GetxController {
-  var apps = <Application>[].obs;
-  var filteredApps = <Application>[].obs;
+  var apps = <AppInfo>[].obs;
+  var filteredApps = <AppInfo>[].obs;
   var appsSelectable = <String>[
     'com.zhiliaoapp.musically',
     'com.whatsapp',
@@ -70,8 +73,7 @@ class ListAppsController extends GetxController {
       filteredApps.value = apps;
     } else {
       filteredApps.value = apps
-          .where(
-              (app) => app.appName.toLowerCase().contains(query.toLowerCase()))
+          .where((app) => app.name.toLowerCase().contains(query.toLowerCase()))
           .toList();
     }
   }
@@ -88,10 +90,10 @@ class ListAppsController extends GetxController {
   }
 
   Future<void> getInstalledApps() async {
-    List<Application> installedApps = await DeviceApps.getInstalledApplications(
-        includeAppIcons: true,
-        onlyAppsWithLaunchIntent: false,
-        includeSystemApps: false);
+    List<AppInfo> installedApps = await InstalledApps.getInstalledApps(
+      true,
+      true,
+    );
 
     apps.value = installedApps;
     filteredApps.value = installedApps;
@@ -112,12 +114,26 @@ class ListAppsController extends GetxController {
     }
 
     DateTime endDate = DateTime.now();
-    DateTime startDate = DateTime(endDate.year, endDate.month,
-        endDate.day); // Inicia desde las 00:00 de hoy
+    DateTime startDate = DateTime(endDate.year, endDate.month, endDate.day, 0,
+        0, 0); // Inicia desde las 00:00 de hoy
+
+    log('===   startDate = $startDate ====== =endDate == $endDate ==== DIFERENCE = ${startDate.difference(endDate)}');
 
     try {
       List<UsageInfo> stats =
           await UsageStats.queryUsageStats(startDate, endDate);
+      for (var info in stats) {
+        final pkg = info.packageName!;
+        final firstTs = int.parse(info.firstTimeStamp!);
+        final lastTs = int.parse(info.lastTimeStamp!);
+        final totalMs = int.parse(info.totalTimeInForeground!);
+
+        final inicio = DateTime.fromMillisecondsSinceEpoch(firstTs);
+        final fin = DateTime.fromMillisecondsSinceEpoch(lastTs);
+        final uso = Duration(milliseconds: totalMs);
+
+        log('$pkg → $inicio ─ $fin   (uso=${uso.inMinutes} min)');
+      }
 
       for (var stat in stats) {
         if (stat.packageName != null && stat.totalTimeInForeground != null) {
@@ -133,6 +149,7 @@ class ListAppsController extends GetxController {
       }
 
       sortAppsByUsage();
+      print(apps);
     } catch (e) {
       print("Error obteniendo estadísticas de uso: $e");
     }

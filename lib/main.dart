@@ -103,10 +103,12 @@ class _OverlayWidgetState extends State<OverlayWidget> {
   // Obtener el nombre de la app en primer plano
   void _startAppUsageTracking() async {
     try {
-      DateTime endTime = DateTime.now();
-      DateTime startTime = endTime.subtract(Duration(minutes: 1));
+      DateTime endDate = DateTime.now();
+      DateTime startTime = DateTime(endDate.year, endDate.month,
+          endDate.day); // Inicia desde las 00:00 de hoy
+
       List<AppUsageInfo> infoList =
-          await appUsage.getAppUsage(startTime, endTime);
+          await appUsage.getAppUsage(startTime, endDate);
       setState(() {
         _currentApp = infoList.last.appName;
         print(' ====== infoList.last.appName = ${infoList.last.appName}');

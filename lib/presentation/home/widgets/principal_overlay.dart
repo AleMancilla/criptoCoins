@@ -1,7 +1,7 @@
-import 'package:device_apps/device_apps.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_time_picker_spinner/flutter_time_picker_spinner.dart';
 import 'package:get/get.dart';
+import 'package:installed_apps/index.dart';
 import 'package:wenia_assignment/core/database/api_database.dart';
 import 'package:wenia_assignment/core/database/databaseservice.dart';
 import 'package:wenia_assignment/presentation/home/list_apps_controller.dart';
@@ -38,7 +38,7 @@ class _PrincipalOverlayState extends State<PrincipalOverlay> {
                   itemBuilder: (context, index) {
                     final app = selectedApps[index];
                     final packageName = app.packageName;
-                    final appName = app.appName;
+                    final appName = app.name;
                     final maxTime =
                         listAppscontroller.maxUsageTime[packageName] ??
                             Duration();
@@ -48,7 +48,7 @@ class _PrincipalOverlayState extends State<PrincipalOverlay> {
                           ? () async {
                               // Editar el tiempo máximo de uso con un selector de tiempo
                               await _showTimePicker(
-                                  context, packageName, maxTime, app.appName);
+                                  context, packageName, maxTime, app.name);
                               setState(() {});
                             }
                           : null,
@@ -81,9 +81,9 @@ class _PrincipalOverlayState extends State<PrincipalOverlay> {
                                   Positioned(
                                     bottom: 0,
                                     right: 0,
-                                    child: app is ApplicationWithIcon
+                                    child: (app.icon != null)
                                         ? Image.memory(
-                                            app.icon,
+                                            app.icon!,
                                             width: 20,
                                             height: 20,
                                           )
@@ -147,7 +147,7 @@ class _PrincipalOverlayState extends State<PrincipalOverlay> {
                     setState(() {});
 
                     final ListAppsController listAppscontroller = Get.find();
-                    List<Application> selectedApps = listAppscontroller.apps
+                    List<AppInfo> selectedApps = listAppscontroller.apps
                         .where((app) => listAppscontroller.appsSelectable
                             .contains(app.packageName))
                         .toList();

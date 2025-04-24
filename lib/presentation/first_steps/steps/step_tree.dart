@@ -1,6 +1,6 @@
-import 'package:device_apps/device_apps.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:installed_apps/index.dart';
 import 'package:wenia_assignment/core/theme/custom_colors.dart';
 import 'package:wenia_assignment/presentation/first_steps/steps/steps_controller.dart';
 import 'package:wenia_assignment/presentation/home/list_apps_controller.dart';
@@ -78,8 +78,7 @@ class _StepTreeState extends State<StepTree> with WidgetsBindingObserver {
                       itemCount: listAppscontroller.filteredApps.length,
                       padding: EdgeInsets.all(0),
                       itemBuilder: (context, index) {
-                        Application app =
-                            listAppscontroller.filteredApps[index];
+                        AppInfo app = listAppscontroller.filteredApps[index];
                         Duration? usageTime =
                             listAppscontroller.appUsageStats[app.packageName];
 
@@ -118,14 +117,14 @@ class _StepTreeState extends State<StepTree> with WidgetsBindingObserver {
                                     ? CustomColors.primary3
                                     : CustomColors.background3,
                               ),
-                              leading: app is ApplicationWithIcon
+                              leading: (app.icon != null)
                                   ? Image.memory(
-                                      app.icon,
+                                      app.icon!,
                                       width: 40,
                                       height: 40,
                                     )
                                   : const Icon(Icons.android),
-                              title: Text(app.appName),
+                              title: Text(app.name),
                               subtitle: Text(
                                 'Hoy lo usaste: ${listAppscontroller.formatDuration(usageTime ?? Duration())}',
                                 style: TextStyle(fontSize: 12),

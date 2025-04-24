@@ -1,4 +1,3 @@
-import 'package:device_apps/device_apps.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_time_picker_spinner/flutter_time_picker_spinner.dart';
 import 'package:get/get.dart';
@@ -31,13 +30,14 @@ class _StepFourState extends State<StepFour> {
                     .where((app) => listAppscontroller.appsSelectable
                         .contains(app.packageName))
                     .toList();
+                print(listAppscontroller.apps);
 
                 return ListView.builder(
                   itemCount: selectedApps.length,
                   itemBuilder: (context, index) {
                     final app = selectedApps[index];
                     final packageName = app.packageName;
-                    final appName = app.appName;
+                    final appName = app.name;
                     final maxTime =
                         listAppscontroller.maxUsageTime[packageName] ??
                             Duration();
@@ -46,7 +46,7 @@ class _StepFourState extends State<StepFour> {
                       onTap: () async {
                         // Editar el tiempo máximo de uso con un selector de tiempo
                         await _showTimePicker(
-                            context, packageName, maxTime, app.appName);
+                            context, packageName, maxTime, app.name);
                         setState(() {});
                       },
                       child: Container(
@@ -78,9 +78,9 @@ class _StepFourState extends State<StepFour> {
                                   Positioned(
                                     bottom: 0,
                                     right: 0,
-                                    child: app is ApplicationWithIcon
+                                    child: (app.icon != null)
                                         ? Image.memory(
-                                            app.icon,
+                                            app.icon!,
                                             width: 20,
                                             height: 20,
                                           )

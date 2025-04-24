@@ -1,7 +1,7 @@
 import 'dart:developer';
 
-import 'package:device_apps/device_apps.dart';
 import 'package:get/get.dart';
+import 'package:installed_apps/index.dart';
 import 'package:wenia_assignment/core/database/databaseservice.dart';
 import 'package:wenia_assignment/core/database/models/model_db_allowed_apps.dart';
 import 'package:wenia_assignment/core/database/models/model_db_usage_limits.dart';
@@ -32,14 +32,14 @@ class ApiDatabase {
     }
   }
 
-  static insertAllowedAppList(List<Application> selectedApps) async {
+  static insertAllowedAppList(List<AppInfo> selectedApps) async {
     // await DatabaseService.insertAllowedApp('com.whatsapp', 'WhatsApp', null);
 
     List<ModelDbAllowedApps> listModelDbAllowedApps = await getAllowedApps();
 
     listModelDbAllowedApps.forEach(
       (element) {
-        Application? application = selectedApps.firstWhereOrNull(
+        AppInfo? application = selectedApps.firstWhereOrNull(
           (app) => app.packageName == element.packageName,
         );
         if (application == null) {
@@ -53,14 +53,14 @@ class ApiDatabase {
             await getSpecificAllowedApps(element.packageName);
         if (previous == null) {
           await DatabaseService.insertAllowedApp(
-              element.packageName, element.appName, null);
+              element.packageName, element.name, null);
         }
       },
     );
   }
 
   static Future insertUsageLimitList(
-      List<Application> selectedApps, Map<String, Duration> maxUsageTime,
+      List<AppInfo> selectedApps, Map<String, Duration> maxUsageTime,
       {int? notificationInterval = 120}) async {
     // await DatabaseService.insertAllowedApp('com.whatsapp', 'WhatsApp', null);
 
@@ -68,7 +68,7 @@ class ApiDatabase {
 
     _list.forEach(
       (element) {
-        Application? application = selectedApps.firstWhereOrNull(
+        AppInfo? application = selectedApps.firstWhereOrNull(
           (app) => app.packageName == element.packageName,
         );
         if (application == null) {
@@ -88,7 +88,7 @@ class ApiDatabase {
         // if (previous == null) {
         final app = element;
         final packageName = app.packageName;
-        final appName = app.appName;
+        final appName = app.name;
         Duration maxTime = maxUsageTime[packageName] ?? Duration(seconds: 120);
 
         ModelDbAllowedApps? data =

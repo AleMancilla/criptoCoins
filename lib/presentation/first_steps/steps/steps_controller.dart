@@ -92,9 +92,11 @@ class StepsController extends GetxController {
   Future<List<AppUsageInfo>> getUsageStats() async {
     try {
       DateTime endDate = DateTime.now();
-      DateTime startDate = endDate.subtract(Duration(hours: 1));
+      DateTime startTime = DateTime(endDate.year, endDate.month,
+          endDate.day); // Inicia desde las 00:00 de hoy
+
       List<AppUsageInfo> infoList =
-          await AppUsage().getAppUsage(startDate, endDate);
+          await AppUsage().getAppUsage(startTime, endDate);
 
       // setState(() => _infos = infoList);
 

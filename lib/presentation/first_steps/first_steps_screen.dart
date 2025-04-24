@@ -1,8 +1,8 @@
 import 'dart:convert';
 
-import 'package:device_apps/device_apps.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:installed_apps/index.dart';
 import 'package:wenia_assignment/core/database/api_database.dart';
 import 'package:wenia_assignment/core/utils/custom_navigator.dart';
 import 'package:wenia_assignment/presentation/auth/auth_home_screen.dart';
@@ -136,7 +136,7 @@ class _FirstStepsScreenState extends State<FirstStepsScreen> {
               if (_pageController.page == 4) {
                 final ListAppsController listAppscontroller = Get.find();
 
-                List<Application> selectedApps = listAppscontroller.apps
+                List<AppInfo> selectedApps = listAppscontroller.apps
                     .where((app) => listAppscontroller.appsSelectable
                         .contains(app.packageName))
                     .toList();
@@ -151,7 +151,7 @@ class _FirstStepsScreenState extends State<FirstStepsScreen> {
               }
               if (_pageController.page == 5) {
                 final ListAppsController listAppscontroller = Get.find();
-                List<Application> selectedApps = listAppscontroller.apps
+                List<AppInfo> selectedApps = listAppscontroller.apps
                     .where((app) => listAppscontroller.appsSelectable
                         .contains(app.packageName))
                     .toList();
