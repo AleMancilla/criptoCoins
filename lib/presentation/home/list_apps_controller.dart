@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:installed_apps/index.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:usage_stats/usage_stats.dart';
+import 'package:wenia_assignment/core/api/usage_service.dart';
 import 'package:wenia_assignment/core/database/api_database.dart';
 import 'package:wenia_assignment/core/database/models/model_db_allowed_apps.dart';
 import 'package:wenia_assignment/core/database/models/model_db_usage_limits.dart';
@@ -120,32 +121,10 @@ class ListAppsController extends GetxController {
     log('===   startDate = $startDate ====== =endDate == $endDate ==== DIFERENCE = ${startDate.difference(endDate)}');
 
     try {
-      List<UsageInfo> stats =
-          await UsageStats.queryUsageStats(startDate, endDate);
-      for (var info in stats) {
-        final pkg = info.packageName!;
-        final firstTs = int.parse(info.firstTimeStamp!);
-        final lastTs = int.parse(info.lastTimeStamp!);
-        final totalMs = int.parse(info.totalTimeInForeground!);
-
-        final inicio = DateTime.fromMillisecondsSinceEpoch(firstTs);
-        final fin = DateTime.fromMillisecondsSinceEpoch(lastTs);
-        final uso = Duration(milliseconds: totalMs);
-
-        log('$pkg → $inicio ─ $fin   (uso=${uso.inMinutes} min)');
-      }
+      List<AppUsage> stats = await UsageService.fetchUsageToday();
 
       for (var stat in stats) {
-        if (stat.packageName != null && stat.totalTimeInForeground != null) {
-          if (appUsageStats[stat.packageName!] == null) {
-            appUsageStats[stat.packageName!] =
-                Duration(milliseconds: int.parse(stat.totalTimeInForeground!));
-          } else {
-            appUsageStats[stat.packageName!] =
-                Duration(milliseconds: int.parse(stat.totalTimeInForeground!)) +
-                    (appUsageStats[stat.packageName!] as Duration);
-          }
-        }
+        appUsageStats[stat.packageName] = stat.usage;
       }
 
       sortAppsByUsage();

@@ -2,6 +2,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:wenia_assignment/core/api/usage_service_widget.dart';
 
 class NativeCommunicationScreen extends StatefulWidget {
   @override
@@ -121,6 +122,7 @@ class _NativeCommunicationScreenState extends State<NativeCommunicationScreen> {
                 child: Text('SHOW'),
               ),
             ),
+            Expanded(child: UsageServiceWidget())
           ],
         ),
       ),

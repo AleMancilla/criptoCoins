@@ -35,6 +35,12 @@ import android.content.ComponentName
 import android.text.TextUtils
 import androidx.core.content.ContextCompat
 
+
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStats
+import android.app.usage.UsageStatsManager
+import java.util.*
+
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.alecodeando/native"
     private val CHANNELTIMESERVICE = "com.example.timeService"
@@ -43,6 +49,8 @@ class MainActivity: FlutterActivity() {
     private val CHANNELDB = "com.example.wenia_assignment/database"
 
     private val CHANNELOVERLAY = "app/overlay"
+
+    private val USAGE_CHANNEL = "mi.paquete/usage"
     
     // Definir la vista flotante
     private lateinit var floatingView: View
@@ -258,6 +266,23 @@ class MainActivity: FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, USAGE_CHANNEL)
+        .setMethodCallHandler { call, result ->
+            when (call.method) {
+            "getUsageToday" -> {
+                try {
+                // Llamamos a tu función (podrías pasarle args si quisieras)
+                val mapLong: Map<String, Long> = getUsageToday()
+                // Flutter admite Map<String, Long> directamente
+                result.success(mapLong)
+                } catch (e: Exception) {
+                result.error("USAGE_ERROR", e.message, null)
+                }
+            }
+            else -> result.notImplemented()
+            }
+        }
     }
 
     private fun getUsers(): List<Map<String, Any>> {
@@ -376,5 +401,33 @@ private fun removeFloatingWidget() {
     val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
     windowManager.removeView(floatingView)
 }
+
+
+  // Tu función nativa que ya calcula el uso “hoy”
+  private fun getUsageToday(): Map<String, Long> {
+    // 1) Calcula inicio de hoy
+    val now = System.currentTimeMillis()
+    val cal = Calendar.getInstance().apply {
+        timeInMillis = now
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val start = cal.timeInMillis
+
+    // 2) Obtén el UsageStatsManager
+    val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+
+    // 3) Pide el agregado de stats en [start, now]
+    val aggregated: Map<String, UsageStats> =
+        usm.queryAndAggregateUsageStats(start, now)
+
+    // 4) Devuelve sólo el totalTimeInForeground por paquete
+    return aggregated.mapValues { entry ->
+        entry.value.totalTimeInForeground
+    }
+    }
+
 
 }
