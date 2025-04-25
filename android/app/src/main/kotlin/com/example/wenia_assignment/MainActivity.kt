@@ -41,6 +41,7 @@ import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import java.util.*
 
+
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.alecodeando/native"
     private val CHANNELTIMESERVICE = "com.example.timeService"
@@ -51,6 +52,9 @@ class MainActivity: FlutterActivity() {
     private val CHANNELOVERLAY = "app/overlay"
 
     private val USAGE_CHANNEL = "mi.paquete/usage"
+
+    private val CHANNEL_USAGE_HOUR = "mi.paquete/usage_hourly"
+
     
     // Definir la vista flotante
     private lateinit var floatingView: View
@@ -283,6 +287,20 @@ class MainActivity: FlutterActivity() {
             else -> result.notImplemented()
             }
         }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_USAGE_HOUR)
+        .setMethodCallHandler { call, result ->
+            if (call.method == "getHourlyUsage") {
+            try {
+                val data = getHourlyUsageToday()
+                result.success(data)
+            } catch (e: Exception) {
+                result.error("HOURLY_USAGE_ERROR", e.message, null)
+            }
+            } else {
+            result.notImplemented()
+            }
+        }
     }
 
     private fun getUsers(): List<Map<String, Any>> {
@@ -428,6 +446,90 @@ private fun removeFloatingWidget() {
         entry.value.totalTimeInForeground
     }
     }
+
+
+  private fun getHourlyUsageToday(): Map<String, Map<Int, List<Long>>> {
+    val now = System.currentTimeMillis()
+    // inicio de día a las 00:00
+    val cal = Calendar.getInstance().apply {
+      timeInMillis = now
+      set(Calendar.HOUR_OF_DAY, 0)
+      set(Calendar.MINUTE, 0)
+      set(Calendar.SECOND, 0)
+      set(Calendar.MILLISECOND, 0)
+    }
+    val start = cal.timeInMillis
+
+    val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+    val events = usm.queryEvents(start, now)
+    val ev = UsageEvents.Event()
+
+    // Estructuras auxiliares
+    data class Span(val pkg: String, val t0: Long, val t1: Long)
+    val lastFg = mutableMapOf<String, Long>()
+    val spans = mutableListOf<Span>()
+    val launches = mutableListOf<Pair<String, Long>>() // (pkg, timestamp)
+
+    // 1) Convertir flujo de eventos en spans y launch-timestamps
+    while (events.hasNextEvent()) {
+      events.getNextEvent(ev)
+      val pkg = ev.packageName ?: continue
+      when (ev.eventType) {
+        UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+          lastFg[pkg] = ev.timeStamp
+          launches += pkg to ev.timeStamp
+        }
+        UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+          val enter = lastFg.remove(pkg) ?: start
+          val exit  = ev.timeStamp
+          if (exit > enter) spans += Span(pkg, enter, exit)
+        }
+      }
+    }
+    // Si alguna sigue en foreground hasta “now”
+    lastFg.forEach { (pkg, t0) ->
+      spans += Span(pkg, t0, now)
+    }
+
+    // 2) Crear el map final: pkg → (hora → [msTotal, countLaunches])
+    val result = mutableMapOf<String, MutableMap<Int, MutableList<Long>>>()
+    fun ensureSlot(pkg: String, hour: Int) {
+      val m = result.getOrPut(pkg) { mutableMapOf() }
+      if (m[hour] == null) m[hour] = mutableListOf(0L, 0L)
+    }
+
+    // Procesar cada span, dividiéndolo por horas
+    for ((pkg, t0, t1) in spans) {
+      var startMs = t0.coerceAtLeast(start)
+      val endMs   = t1.coerceAtMost(now)
+      while (startMs < endMs) {
+        val cal2 = Calendar.getInstance().apply { timeInMillis = startMs }
+        val hour = cal2.get(Calendar.HOUR_OF_DAY)
+        // fin del slot de esa hora
+        cal2.set(Calendar.MINUTE, 59)
+        cal2.set(Calendar.SECOND, 59)
+        cal2.set(Calendar.MILLISECOND, 999)
+        val slotEnd = minOf(cal2.timeInMillis, endMs)
+
+        val delta = slotEnd - startMs
+        ensureSlot(pkg, hour)
+        result[pkg]!![hour]!![0] += delta
+
+        startMs = slotEnd + 1
+      }
+    }
+
+    // Contar lanzamientos
+    for ((pkg, ts) in launches) {
+      if (ts < start || ts > now) continue
+      val hr = Calendar.getInstance().apply { timeInMillis = ts }
+                   .get(Calendar.HOUR_OF_DAY)
+      ensureSlot(pkg, hr)
+      result[pkg]!![hr]!![1] += 1L
+    }
+
+    return result
+  }
 
 
 }
