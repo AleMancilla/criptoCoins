@@ -25,7 +25,7 @@ class UsageServiceHourly {
 
   Future<List<HourlyAppUsage>> fetchHourlyUsage() async {
     final List<dynamic>? raw =
-        await _chan.invokeMethod<List<dynamic>>('getHourlyUsage');
+        await _chan.invokeMethod<List<dynamic>>('getHourlyForegroundUsage');
     if (raw == null) return [];
     return raw.map((entry) {
       final map = entry as Map<dynamic, dynamic>;

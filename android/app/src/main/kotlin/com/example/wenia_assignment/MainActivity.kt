@@ -48,6 +48,9 @@ import android.util.Base64
 
 import android.content.pm.ApplicationInfo
 
+
+typealias HourlyData = Map<String, Any>
+
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.alecodeando/native"
     private val CHANNELTIMESERVICE = "com.example.timeService"
@@ -164,6 +167,14 @@ class MainActivity: FlutterActivity() {
                     result.notImplemented()
                 }
             }
+        }
+
+        Intent(this, UsageControlService::class.java).also { intent ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
         }
 
 
@@ -303,7 +314,19 @@ class MainActivity: FlutterActivity() {
                 } catch (e: Exception) {
                     result.error("HOURLY_USAGE_ERROR", e.message, null)
                 }
-            } else {
+            } 
+            
+            if (call.method == "getHourlyForegroundUsage") {
+                try {
+                        val usageList = applicationContext.getHourlyForegroundUsage()
+                        // Devuelve una lista de mapas JSON-serializables
+                        result.success(usageList)
+                    } catch (e: Exception) {
+                        result.error("USAGE_ERROR", e.message, null)
+                    }
+            } 
+            
+            else {
                 result.notImplemented()
             }
         }
@@ -577,5 +600,132 @@ private fun removeFloatingWidget() {
     return out
   }
 
+
+
+fun Context.getHourlyForegroundUsage(): List<HourlyData> {
+    val now = System.currentTimeMillis()
+    val cal = Calendar.getInstance().apply {
+        timeInMillis = now
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val start = cal.timeInMillis
+
+    // Recolectar eventos
+    val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+    val iterator = usm.queryEvents(start, now)
+    val template = UsageEvents.Event()
+    data class Evt(val pkg: String?, val type: Int, val ts: Long)
+    val events = mutableListOf<Evt>()
+    while (iterator.hasNextEvent()) {
+        iterator.getNextEvent(template)
+        events += Evt(template.packageName, template.eventType, template.timeStamp)
+    }
+
+    // Generar spans de pantalla
+    data class Span(val pkg: String?, val t0: Long, val t1: Long)
+    val screenSpans = mutableListOf<Span>()
+    var lastScreenOn = start
+    var screenOn = true
+    for (e in events) {
+        when (e.type) {
+            UsageEvents.Event.SCREEN_NON_INTERACTIVE -> if (screenOn) {
+                screenSpans += Span(null, lastScreenOn, e.ts)
+                screenOn = false
+            }
+            UsageEvents.Event.SCREEN_INTERACTIVE     -> if (!screenOn) {
+                lastScreenOn = e.ts
+                screenOn = true
+            }
+        }
+    }
+    if (screenOn) screenSpans += Span(null, lastScreenOn, now)
+
+    // Generar spans de app en foreground
+    val appSpans = mutableListOf<Span>()
+    val lastFg = mutableMapOf<String, Long>()
+    for (e in events) {
+        val pkg = e.pkg ?: continue
+        when (e.type) {
+            UsageEvents.Event.MOVE_TO_FOREGROUND -> lastFg[pkg] = e.ts
+            UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                val t0 = lastFg.remove(pkg) ?: start
+                if (e.ts > t0) appSpans += Span(pkg, t0, e.ts)
+            }
+        }
+    }
+    lastFg.forEach { (pkg, t0) -> appSpans += Span(pkg, t0, now) }
+
+    // Contar lanzamientos por hora
+    val launchCounts = mutableMapOf<String, MutableMap<Int, Int>>()
+    for (e in events) {
+        if (e.type == UsageEvents.Event.MOVE_TO_FOREGROUND && e.pkg != null && e.ts in start..now) {
+            val c = Calendar.getInstance().apply { timeInMillis = e.ts }
+            val hr = c.get(Calendar.HOUR_OF_DAY)
+            launchCounts.getOrPut(e.pkg!!) { mutableMapOf() }
+                        .merge(hr, 1) { old, inc -> old + inc }
+        }
+    }
+
+    // Intersectar spans de app vs pantalla
+    fun intersect(a: Span, s: Span): Span? {
+        val s0 = maxOf(a.t0, s.t0)
+        val s1 = minOf(a.t1, s.t1)
+        return if (s1 > s0) Span(a.pkg, s0, s1) else null
+    }
+    val goodSpans = mutableListOf<Span>()
+    for (asp in appSpans) for (ssp in screenSpans) intersect(asp, ssp)?.let { goodSpans += it }
+
+    // Agrupar uso por paquete y hora
+    val usageMap = mutableMapOf<String, MutableMap<Int, Long>>()
+    for ((pkg, t0, t1) in goodSpans) {
+        var s = t0
+        while (s < t1) {
+            val c = Calendar.getInstance().apply { timeInMillis = s }
+            val hr = c.get(Calendar.HOUR_OF_DAY)
+            c.set(Calendar.MINUTE, 59); c.set(Calendar.SECOND, 59); c.set(Calendar.MILLISECOND, 999)
+            val endSlot = minOf(c.timeInMillis, t1)
+            usageMap.getOrPut(pkg!!) { mutableMapOf() }
+                    .merge(hr, endSlot - s) { old, extra -> old + extra }
+            s = endSlot + 1
+        }
+    }
+
+    // Empaquetar resultados
+    val pm = packageManager
+    val out = mutableListOf<HourlyData>()
+    for ((pkg, hours) in usageMap) {
+        val ai = try { pm.getApplicationInfo(pkg, 0) } catch (_: Exception) { null }
+        if (ai != null && ((ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
+                          (ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0)) continue
+        val label = ai?.let { pm.getApplicationLabel(it).toString() } ?: pkg
+        val iconB64 = ai?.let {
+            val d = pm.getApplicationIcon(it)
+            val bmp = if (d is BitmapDrawable) d.bitmap else Bitmap.createBitmap(
+                d.intrinsicWidth.coerceAtLeast(1),
+                d.intrinsicHeight.coerceAtLeast(1),
+                Bitmap.Config.ARGB_8888
+            ).also { b -> Canvas(b).apply { d.setBounds(0,0,width,height); d.draw(this) } }
+            ByteArrayOutputStream().use { st -> bmp.compress(Bitmap.CompressFormat.PNG,100,st);
+                Base64.encodeToString(st.toByteArray(), Base64.NO_WRAP)
+            }
+        } ?: ""
+
+        for ((hour, ms) in hours) {
+            val launches = launchCounts[pkg]?.get(hour) ?: 0
+            out += mapOf(
+                "packageName" to pkg,
+                "appName" to label,
+                "icon" to iconB64,
+                "hour" to hour,
+                "usage" to ms,
+                "launches" to launches
+            )
+        }
+    }
+    return out
+}
 
 }

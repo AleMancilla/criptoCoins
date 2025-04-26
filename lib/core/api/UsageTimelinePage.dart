@@ -90,6 +90,7 @@ class _UsagePageSelectableState extends State<UsagePageSelectable> {
     if (map.isEmpty) {
       return [Text('Sin uso registrado')];
     }
+    print(map);
     return map.map((e) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),

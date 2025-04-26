@@ -3,6 +3,7 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.SYSTEM_OVERLAY_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
@@ -64,6 +65,22 @@
         android:name=".TimeService"
         android:enabled="true"
         android:exported="false" />
+
+    <!-- Servicio de control en primer plano -->
+    <service
+        android:name=".UsageControlService"
+        android:exported="false"
+        android:foregroundServiceType="dataSync" />
+
+    <!-- Para reiniciar el servicio tras reboot -->
+    <receiver
+        android:name=".BootReceiver"
+        android:enabled="true"
+        android:exported="true">
+        <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED"/>
+        </intent-filter>
+    </receiver>
 
     <service
         android:name=".AppMonitorService"
