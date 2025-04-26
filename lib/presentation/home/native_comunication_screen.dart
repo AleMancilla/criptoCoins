@@ -2,8 +2,11 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
+import 'package:wenia_assignment/core/api/UsageTimelinePage.dart';
 import 'package:wenia_assignment/core/api/hourly_app_usage_screen.dart';
 import 'package:wenia_assignment/core/api/usage_service_widget.dart';
+import 'package:wenia_assignment/presentation/home/list_apps_controller.dart';
 
 class NativeCommunicationScreen extends StatefulWidget {
   @override
@@ -16,6 +19,7 @@ class _NativeCommunicationScreenState extends State<NativeCommunicationScreen> {
   static const platformTime = MethodChannel('com.example.timeService');
   String _messageFromKotlin = "Esperando mensaje desde Kotlin...";
 
+  final ListAppsController listAppscontroller = Get.find();
   @override
   void initState() {
     super.initState();
@@ -42,17 +46,6 @@ class _NativeCommunicationScreenState extends State<NativeCommunicationScreen> {
     } catch (e) {
       print("Error al enviar mensaje a Kotlin: ${e.toString()}");
     }
-  }
-
-  Future<bool> checkAccessibility() async {
-    final int result =
-        await platformTime.invokeMethod('isAccessibilityEnabled');
-    log(' ===== result = $result');
-    return result == 1;
-  }
-
-  Future<void> requestAccessibilityPermission() async {
-    await platformTime.invokeMethod('openAccessibilitySettings');
   }
 
   // Método para escuchar mensajes desde Kotlin
@@ -95,35 +88,16 @@ class _NativeCommunicationScreenState extends State<NativeCommunicationScreen> {
           children: [
             GestureDetector(
               onTap: () {
-                checkAccessibility();
-              },
-              child: Container(
-                padding: EdgeInsets.all(20),
-                color: Colors.green,
-                child: Text('Preguntar'),
-              ),
-            ),
-            GestureDetector(
-              onTap: () {
-                requestAccessibilityPermission();
-              },
-              child: Container(
-                padding: EdgeInsets.all(20),
-                color: Colors.green,
-                child: Text('Solicitar'),
-              ),
-            ),
-            GestureDetector(
-              onTap: () {
                 startOverlay();
               },
               child: Container(
-                padding: EdgeInsets.all(20),
+                padding: EdgeInsets.all(5),
                 color: Colors.blue,
                 child: Text('SHOW'),
               ),
             ),
-            Expanded(child: HourlyUsagePage())
+            UsagePageSelectable(listAppscontroller.mapListAppsUsageByHour),
+            // Expanded(child: HourlyUsagePage())
           ],
         ),
       ),

@@ -42,6 +42,12 @@ import android.app.usage.UsageStatsManager
 import java.util.*
 
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.util.Base64
+
+import android.content.pm.ApplicationInfo
+
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.alecodeando/native"
     private val CHANNELTIMESERVICE = "com.example.timeService"
@@ -291,14 +297,14 @@ class MainActivity: FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_USAGE_HOUR)
         .setMethodCallHandler { call, result ->
             if (call.method == "getHourlyUsage") {
-            try {
-                val data = getHourlyUsageToday()
-                result.success(data)
-            } catch (e: Exception) {
-                result.error("HOURLY_USAGE_ERROR", e.message, null)
-            }
+                try {
+                    val data = getHourlyUsageWithMeta()
+                    result.success(data)
+                } catch (e: Exception) {
+                    result.error("HOURLY_USAGE_ERROR", e.message, null)
+                }
             } else {
-            result.notImplemented()
+                result.notImplemented()
             }
         }
     }
@@ -448,29 +454,26 @@ private fun removeFloatingWidget() {
     }
 
 
-  private fun getHourlyUsageToday(): Map<String, Map<Int, List<Long>>> {
-    val now = System.currentTimeMillis()
-    // inicio de día a las 00:00
-    val cal = Calendar.getInstance().apply {
+  private fun getHourlyUsageWithMeta(): List<Map<String, Any>> {
+    // 1) cálculo de inicio de hoy
+    val now   = System.currentTimeMillis()
+    val cal   = Calendar.getInstance().apply {
       timeInMillis = now
-      set(Calendar.HOUR_OF_DAY, 0)
-      set(Calendar.MINUTE, 0)
-      set(Calendar.SECOND, 0)
-      set(Calendar.MILLISECOND, 0)
+      set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+      set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
     }
     val start = cal.timeInMillis
 
-    val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+    // 2) recogida de eventos
+    val usm    = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
     val events = usm.queryEvents(start, now)
-    val ev = UsageEvents.Event()
+    val ev     = UsageEvents.Event()
 
-    // Estructuras auxiliares
     data class Span(val pkg: String, val t0: Long, val t1: Long)
-    val lastFg = mutableMapOf<String, Long>()
-    val spans = mutableListOf<Span>()
-    val launches = mutableListOf<Pair<String, Long>>() // (pkg, timestamp)
+    val lastFg   = mutableMapOf<String, Long>()
+    val spans    = mutableListOf<Span>()
+    val launches = mutableListOf<Pair<String, Long>>()
 
-    // 1) Convertir flujo de eventos en spans y launch-timestamps
     while (events.hasNextEvent()) {
       events.getNextEvent(ev)
       val pkg = ev.packageName ?: continue
@@ -481,54 +484,97 @@ private fun removeFloatingWidget() {
         }
         UsageEvents.Event.MOVE_TO_BACKGROUND -> {
           val enter = lastFg.remove(pkg) ?: start
-          val exit  = ev.timeStamp
-          if (exit > enter) spans += Span(pkg, enter, exit)
+          if (ev.timeStamp > enter) spans += Span(pkg, enter, ev.timeStamp)
         }
       }
     }
-    // Si alguna sigue en foreground hasta “now”
-    lastFg.forEach { (pkg, t0) ->
-      spans += Span(pkg, t0, now)
+    lastFg.forEach { (pkg, enter) ->
+      spans += Span(pkg, enter, now)
     }
 
-    // 2) Crear el map final: pkg → (hora → [msTotal, countLaunches])
-    val result = mutableMapOf<String, MutableMap<Int, MutableList<Long>>>()
-    fun ensureSlot(pkg: String, hour: Int) {
-      val m = result.getOrPut(pkg) { mutableMapOf() }
-      if (m[hour] == null) m[hour] = mutableListOf(0L, 0L)
+    // 3) acumula por paquete y hora
+    val raw = mutableMapOf<String, MutableMap<Int, MutableList<Long>>>()
+    fun slot(pkg: String, hour: Int) {
+      raw.getOrPut(pkg) { mutableMapOf() }
+         .getOrPut(hour) { mutableListOf(0L, 0L) }
     }
 
-    // Procesar cada span, dividiéndolo por horas
     for ((pkg, t0, t1) in spans) {
-      var startMs = t0.coerceAtLeast(start)
-      val endMs   = t1.coerceAtMost(now)
-      while (startMs < endMs) {
-        val cal2 = Calendar.getInstance().apply { timeInMillis = startMs }
-        val hour = cal2.get(Calendar.HOUR_OF_DAY)
-        // fin del slot de esa hora
-        cal2.set(Calendar.MINUTE, 59)
-        cal2.set(Calendar.SECOND, 59)
-        cal2.set(Calendar.MILLISECOND, 999)
-        val slotEnd = minOf(cal2.timeInMillis, endMs)
-
-        val delta = slotEnd - startMs
-        ensureSlot(pkg, hour)
-        result[pkg]!![hour]!![0] += delta
-
-        startMs = slotEnd + 1
+      var s = maxOf(t0, start)
+      val e = minOf(t1, now)
+      while (s < e) {
+        val c = Calendar.getInstance().apply { timeInMillis = s }
+        val h = c.get(Calendar.HOUR_OF_DAY)
+        c.set(Calendar.MINUTE, 59); c.set(Calendar.SECOND, 59); c.set(Calendar.MILLISECOND, 999)
+        val endSlot = minOf(c.timeInMillis, e)
+        slot(pkg, h)
+        raw[pkg]!![h]!![0] += (endSlot - s)
+        s = endSlot + 1
+      }
+    }
+    // lanzamientos
+    for ((pkg, ts) in launches) {
+      if (ts in start..now) {
+        val h = Calendar.getInstance().apply { timeInMillis = ts }
+                .get(Calendar.HOUR_OF_DAY)
+        slot(pkg, h)
+        val lst = raw[pkg]!![h]!!           // MutableList<Long>
+        lst[1] = lst[1] + 1 
       }
     }
 
-    // Contar lanzamientos
-    for ((pkg, ts) in launches) {
-      if (ts < start || ts > now) continue
-      val hr = Calendar.getInstance().apply { timeInMillis = ts }
-                   .get(Calendar.HOUR_OF_DAY)
-      ensureSlot(pkg, hr)
-      result[pkg]!![hr]!![1] += 1L
+    // 4) empaqueta con nombre e icono
+    val pm = packageManager
+    val out = mutableListOf<Map<String, Any>>()
+    for ((pkg, hours) in raw) {
+    // 1) Obtengo ApplicationInfo (si falla, lo dejo pasar, pero puedes ajustarlo)
+    val ai = try { pm.getApplicationInfo(pkg, 0) } catch (_: Exception) { null }
+
+    // 2) Si es app de sistema, la ignoro
+    if (ai != null) {
+        val isSystem = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+        val isUpdatedSys = (ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+        if (isSystem || isUpdatedSys) continue
     }
 
-    return result
+    // 3) Sigo empaquetando nombre, icono y stats
+    val label = ai?.let { pm.getApplicationLabel(it).toString() } ?: pkg
+
+      // icono a base64
+      val iconB64 = ai?.let {
+        val d = pm.getApplicationIcon(it)
+        val bmp = when(d) {
+          is BitmapDrawable -> d.bitmap
+          else -> {
+            val b = Bitmap.createBitmap(
+              d.intrinsicWidth.coerceAtLeast(1),
+              d.intrinsicHeight.coerceAtLeast(1),
+              Bitmap.Config.ARGB_8888
+            )
+            val c2 = Canvas(b)
+            d.setBounds(0,0,c2.width,c2.height)
+            d.draw(c2)
+            b
+          }
+        }
+        ByteArrayOutputStream().use { st ->
+          bmp.compress(Bitmap.CompressFormat.PNG, 100, st)
+          Base64.encodeToString(st.toByteArray(), Base64.NO_WRAP)
+        }
+      } ?: ""
+
+      for ((hour, vals) in hours) {
+        out += mapOf(
+          "packageName" to pkg,
+          "appName"     to label,
+          "icon"        to iconB64,
+          "hour"        to hour,
+          "usage"       to vals[0],
+          "launches"    to vals[1].toInt()
+        )
+      }
+    }
+    return out
   }
 
 

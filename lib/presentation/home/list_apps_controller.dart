@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:installed_apps/index.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:usage_stats/usage_stats.dart';
+import 'package:wenia_assignment/core/api/hourly_app_usage.dart';
 import 'package:wenia_assignment/core/api/usage_service.dart';
 import 'package:wenia_assignment/core/database/api_database.dart';
 import 'package:wenia_assignment/core/database/models/model_db_allowed_apps.dart';
@@ -20,6 +21,10 @@ class ListAppsController extends GetxController {
     'com.instagram.android',
   ].obs;
   var appUsageStats = <String, Duration>{}.obs;
+  RxList<HourlyAppUsage> datePerHourList = <HourlyAppUsage>[].obs;
+
+  RxMap<int, List<HourlyAppUsage>> mapListAppsUsageByHour =
+      <int, List<HourlyAppUsage>>{}.obs;
 
   // Tiempo máximo de uso para cada app en appsSelectable
   var maxUsageTime = <String, Duration>{}.obs;
@@ -29,6 +34,7 @@ class ListAppsController extends GetxController {
     super.onInit();
     getInstalledApps();
     getUsageStats();
+    getUsagePerHourByDay();
     await setDefaultAppSelectable();
     await setDefaultMaxUsageTime();
   }
@@ -106,6 +112,14 @@ class ListAppsController extends GetxController {
     if (!granted) {
       await UsageStats.grantUsagePermission();
     }
+  }
+
+  Future<void> getUsagePerHourByDay() async {
+    List<HourlyAppUsage> _data = await UsageServiceHourly().fetchHourlyUsage();
+    for (var u in _data) {
+      mapListAppsUsageByHour.putIfAbsent(u.hour, () => []).add(u);
+    }
+    mapListAppsUsageByHour.refresh();
   }
 
   Future<void> getUsageStats() async {

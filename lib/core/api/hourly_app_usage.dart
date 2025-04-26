@@ -1,46 +1,54 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/services.dart';
 
 class HourlyAppUsage {
   final String packageName;
+  final String appName;
+  final Uint8List? icon; // null si no venía
   final int hour; // 0–23
   final Duration usage;
   final int launches;
 
   HourlyAppUsage({
     required this.packageName,
+    required this.appName,
+    this.icon,
     required this.hour,
     required this.usage,
     required this.launches,
   });
 }
 
-class UsageService {
+class UsageServiceHourly {
   static const _chan = MethodChannel('mi.paquete/usage_hourly');
 
-  /// Devuelve una lista de HourlyAppUsage, sin ordenar.
   Future<List<HourlyAppUsage>> fetchHourlyUsage() async {
-    final Map<dynamic, dynamic>? raw =
-        await _chan.invokeMapMethod('getHourlyUsage');
+    final List<dynamic>? raw =
+        await _chan.invokeMethod<List<dynamic>>('getHourlyUsage');
     if (raw == null) return [];
+    return raw.map((entry) {
+      final map = entry as Map<dynamic, dynamic>;
+      final pkg = map['packageName'] as String;
+      final name = map['appName'] as String;
+      final iconB64 = map['icon'] as String;
+      final hr = map['hour'] as int;
+      final ms = map['usage'] as int;
+      final cnt = map['launches'] as int;
 
-    final List<HourlyAppUsage> out = [];
+      Uint8List? iconBytes;
+      if (iconB64.isNotEmpty) {
+        iconBytes = base64Decode(iconB64);
+      }
 
-    raw.forEach((pkg, perHour) {
-      final hoursMap = perHour as Map<dynamic, dynamic>;
-      hoursMap.forEach((hrStr, data) {
-        final hour = int.parse(hrStr.toString());
-        final list = data as List<dynamic>;
-        final ms = list[0] as int;
-        final cnt = list[1] as int;
-        out.add(HourlyAppUsage(
-          packageName: pkg as String,
-          hour: hour,
-          usage: Duration(milliseconds: ms),
-          launches: cnt,
-        ));
-      });
-    });
-
-    return out;
+      return HourlyAppUsage(
+        packageName: pkg,
+        appName: name,
+        icon: iconBytes,
+        hour: hr,
+        usage: Duration(milliseconds: ms),
+        launches: cnt,
+      );
+    }).toList();
   }
 }

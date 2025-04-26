@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:wenia_assignment/core/api/hourly_usage_chart.dart';
+import 'package:wenia_assignment/core/api/UsageTimelinePage.dart';
 import 'package:wenia_assignment/core/theme/custom_colors.dart';
 import 'package:wenia_assignment/core/utils/custom_navigator.dart';
 import 'package:wenia_assignment/presentation/home/controller/home_controller.dart';
@@ -24,7 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<Widget> _screens = [
     ListAppsScreen(),
     NativeCommunicationScreen(),
-    // UsageTimelinePage(),
+    // UsagePageSelectable(),
     PrincipalOverlay(),
   ];
 

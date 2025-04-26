@@ -13,7 +13,7 @@ class _HourlyUsagePageState extends State<HourlyUsagePage> {
   @override
   void initState() {
     super.initState();
-    UsageService().fetchHourlyUsage().then((list) {
+    UsageServiceHourly().fetchHourlyUsage().then((list) {
       setState(() => _data = list);
     });
   }
