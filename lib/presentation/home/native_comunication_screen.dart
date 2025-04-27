@@ -76,30 +76,14 @@ class _NativeCommunicationScreenState extends State<NativeCommunicationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Flutter - Kotlin Communication'),
+        title: Text('Uso diario'),
       ),
-      floatingActionButton: FloatingActionButton(onPressed: () {
-        sendMessageToKotlinStartTime();
-      }),
+      // floatingActionButton: FloatingActionButton(onPressed: () {
+      //   sendMessageToKotlinStartTime();
+      // }),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            GestureDetector(
-              onTap: () {
-                startOverlay();
-              },
-              child: Container(
-                padding: EdgeInsets.all(5),
-                color: Colors.blue,
-                child: Text('SHOW'),
-              ),
-            ),
-            UsagePageSelectable(listAppscontroller.mapListAppsUsageByHour),
-            // Expanded(child: HourlyUsagePage())
-          ],
-        ),
+        child: UsagePageSelectable(listAppscontroller.mapListAppsUsageByHour),
       ),
     );
   }

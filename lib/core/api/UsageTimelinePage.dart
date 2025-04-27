@@ -45,16 +45,20 @@ class _UsagePageSelectableState extends State<UsagePageSelectable> {
           Container(
             color: Colors.grey.shade100,
             padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Detalles hora ${_selectedHour}:00 – ${_selectedHour! + 1}:00',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+            child: Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Detalles hora ${_selectedHour}:00 – ${_selectedHour! + 1}:00',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    ..._buildDetailRows(_selectedHour!),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                ..._buildDetailRows(_selectedHour!),
-              ],
+              ),
             ),
           ),
       ],
