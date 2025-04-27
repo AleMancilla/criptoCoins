@@ -115,9 +115,14 @@ class ListAppsController extends GetxController {
   }
 
   Future<void> getUsagePerHourByDay() async {
+    print('#####################################');
     List<HourlyAppUsage> _data = await UsageServiceHourly().fetchHourlyUsage();
     for (var u in _data) {
-      mapListAppsUsageByHour.putIfAbsent(u.hour, () => []).add(u);
+      if (u.launches == 0) {
+        print('ignorado');
+      } else {
+        mapListAppsUsageByHour.putIfAbsent(u.hour, () => []).add(u);
+      }
     }
     mapListAppsUsageByHour.refresh();
   }

@@ -29,7 +29,7 @@ class StepOne extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             SizedBox(height: 20),
-            controller.permisionUsageIsComplete.value
+            controller.permisionUsage.value
                 ? CustomButton(
                     text: 'Permiso otorgado',
                     color: Colors.green,
@@ -37,7 +37,7 @@ class StepOne extends StatelessWidget {
                 : CustomButton(
                     text: 'Dar permiso',
                     ontap: () async {
-                      await controller.askForPermision();
+                      await controller.openSettings();
                     },
                   ),
             SizedBox(height: 20),

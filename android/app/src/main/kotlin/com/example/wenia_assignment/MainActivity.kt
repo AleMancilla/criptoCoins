@@ -48,6 +48,14 @@ import android.util.Base64
 
 import android.content.pm.ApplicationInfo
 
+import java.util.Calendar
+import java.lang.reflect.Modifier
+
+
+import android.app.AppOpsManager
+import android.os.Process
+
+
 
 typealias HourlyData = Map<String, Any>
 
@@ -63,6 +71,9 @@ class MainActivity: FlutterActivity() {
     private val USAGE_CHANNEL = "mi.paquete/usage"
 
     private val CHANNEL_USAGE_HOUR = "mi.paquete/usage_hourly"
+
+
+  private val CHANNEL_PERMISSION = "com.example.app/usage_access"
 
     
     // Definir la vista flotante
@@ -330,6 +341,44 @@ class MainActivity: FlutterActivity() {
                 result.notImplemented()
             }
         }
+
+        MethodChannel(
+        flutterEngine.dartExecutor.binaryMessenger,
+        CHANNEL_PERMISSION
+        ).setMethodCallHandler { call, result ->
+        when (call.method) {
+          "openUsageAccessSettings" -> {
+            // Abre ajustes de Usage Access
+            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+            startActivity(intent)
+            result.success(null)
+          }
+          "isUsageAccessGranted" -> {
+            // Comprueba si realmente está concedido
+            result.success(isUsageStatsPermissionGranted(this))
+          }
+          else -> result.notImplemented()
+        }
+        }
+
+        
+    }
+    
+    private fun isUsageStatsPermissionGranted(context: Context): Boolean {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        appOps.unsafeCheckOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            Process.myUid(), context.packageName
+        )
+        } else {
+        @Suppress("DEPRECATION")
+        appOps.checkOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            Process.myUid(), context.packageName
+        )
+        }
+        return mode == AppOpsManager.MODE_ALLOWED
     }
 
     private fun getUsers(): List<Map<String, Any>> {
@@ -600,132 +649,183 @@ private fun removeFloatingWidget() {
     return out
   }
 
-
-
 fun Context.getHourlyForegroundUsage(): List<HourlyData> {
-    val now = System.currentTimeMillis()
-    val cal = Calendar.getInstance().apply {
-        timeInMillis = now
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    val start = cal.timeInMillis
+  // 1) Definir rango del día
+  val now = System.currentTimeMillis()
+  val cal = Calendar.getInstance().apply {
+    timeInMillis = now
+    set(Calendar.HOUR_OF_DAY, 0)
+    set(Calendar.MINUTE, 0)
+    set(Calendar.SECOND, 0)
+    set(Calendar.MILLISECOND, 0)
+  }
+  val start = cal.timeInMillis
 
-    // Recolectar eventos
-    val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-    val iterator = usm.queryEvents(start, now)
-    val template = UsageEvents.Event()
-    data class Evt(val pkg: String?, val type: Int, val ts: Long)
-    val events = mutableListOf<Evt>()
-    while (iterator.hasNextEvent()) {
-        iterator.getNextEvent(template)
-        events += Evt(template.packageName, template.eventType, template.timeStamp)
-    }
+  val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
 
-    // Generar spans de pantalla
-    data class Span(val pkg: String?, val t0: Long, val t1: Long)
-    val screenSpans = mutableListOf<Span>()
-    var lastScreenOn = start
-    var screenOn = true
-    for (e in events) {
-        when (e.type) {
-            UsageEvents.Event.SCREEN_NON_INTERACTIVE -> if (screenOn) {
-                screenSpans += Span(null, lastScreenOn, e.ts)
-                screenOn = false
-            }
-            UsageEvents.Event.SCREEN_INTERACTIVE     -> if (!screenOn) {
-                lastScreenOn = e.ts
-                screenOn = true
-            }
-        }
-    }
-    if (screenOn) screenSpans += Span(null, lastScreenOn, now)
+  // 2) Leer todos los eventos (package, tipo, timestamp, class)
+  data class Evt(val pkg: String?, val type: Int, val ts: Long, val cls: String?)
+  val events = mutableListOf<Evt>()
+  val iter = usm.queryEvents(start, now)
+  val ev = UsageEvents.Event()
+  while (iter.hasNextEvent()) {
+    iter.getNextEvent(ev)
+    events.add(Evt(ev.packageName, ev.eventType, ev.timeStamp, ev.className))
+  }
 
-    // Generar spans de app en foreground
-    val appSpans = mutableListOf<Span>()
-    val lastFg = mutableMapOf<String, Long>()
-    for (e in events) {
-        val pkg = e.pkg ?: continue
-        when (e.type) {
-            UsageEvents.Event.MOVE_TO_FOREGROUND -> lastFg[pkg] = e.ts
-            UsageEvents.Event.MOVE_TO_BACKGROUND -> {
-                val t0 = lastFg.remove(pkg) ?: start
-                if (e.ts > t0) appSpans += Span(pkg, t0, e.ts)
-            }
-        }
+  // 3) Calcular spans de pantalla activa
+  data class Span(val pkg: String?, val t0: Long, val t1: Long)
+  val screenSpans = mutableListOf<Span>()
+  var lastScreenOn = start
+  var screenOn = true
+  events.forEach { e ->
+    when (e.type) {
+      UsageEvents.Event.SCREEN_NON_INTERACTIVE -> if (screenOn) {
+        screenSpans.add(Span(null, lastScreenOn, e.ts))
+        screenOn = false
+      }
+      UsageEvents.Event.SCREEN_INTERACTIVE     -> if (!screenOn) {
+        lastScreenOn = e.ts
+        screenOn = true
+      }
     }
-    lastFg.forEach { (pkg, t0) -> appSpans += Span(pkg, t0, now) }
+  }
+  if (screenOn) screenSpans.add(Span(null, lastScreenOn, now))
 
-    // Contar lanzamientos por hora
-    val launchCounts = mutableMapOf<String, MutableMap<Int, Int>>()
-    for (e in events) {
-        if (e.type == UsageEvents.Event.MOVE_TO_FOREGROUND && e.pkg != null && e.ts in start..now) {
-            val c = Calendar.getInstance().apply { timeInMillis = e.ts }
-            val hr = c.get(Calendar.HOUR_OF_DAY)
-            launchCounts.getOrPut(e.pkg!!) { mutableMapOf() }
-                        .merge(hr, 1) { old, inc -> old + inc }
-        }
+  // 4) Calcular spans de app en foreground
+  val appSpans = mutableListOf<Span>()
+  val lastFg  = mutableMapOf<String, Long>()
+  events.forEach { e ->
+    val pkg = e.pkg ?: return@forEach
+    when (e.type) {
+      UsageEvents.Event.MOVE_TO_FOREGROUND -> lastFg[pkg] = e.ts
+      UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+        val t0 = lastFg.remove(pkg) ?: start
+        if (e.ts > t0) appSpans.add(Span(pkg, t0, e.ts))
+      }
     }
+  }
+  lastFg.forEach { (pkg, t0) -> appSpans.add(Span(pkg, t0, now)) }
 
-    // Intersectar spans de app vs pantalla
-    fun intersect(a: Span, s: Span): Span? {
-        val s0 = maxOf(a.t0, s.t0)
-        val s1 = minOf(a.t1, s.t1)
-        return if (s1 > s0) Span(a.pkg, s0, s1) else null
+  // 5) Intersectar spans de pantalla vs app
+  fun intersect(a: Span, s: Span): Span? {
+    val s0 = maxOf(a.t0, s.t0)
+    val s1 = minOf(a.t1, s.t1)
+    return if (s1 > s0) Span(a.pkg, s0, s1) else null
+  }
+  val goodSpans = mutableListOf<Span>()
+  appSpans.forEach { asp ->
+    screenSpans.forEach { ssp ->
+      intersect(asp, ssp)?.let { goodSpans.add(it) }
     }
-    val goodSpans = mutableListOf<Span>()
-    for (asp in appSpans) for (ssp in screenSpans) intersect(asp, ssp)?.let { goodSpans += it }
+  }
 
-    // Agrupar uso por paquete y hora
-    val usageMap = mutableMapOf<String, MutableMap<Int, Long>>()
-    for ((pkg, t0, t1) in goodSpans) {
-        var s = t0
-        while (s < t1) {
-            val c = Calendar.getInstance().apply { timeInMillis = s }
-            val hr = c.get(Calendar.HOUR_OF_DAY)
-            c.set(Calendar.MINUTE, 59); c.set(Calendar.SECOND, 59); c.set(Calendar.MILLISECOND, 999)
-            val endSlot = minOf(c.timeInMillis, t1)
-            usageMap.getOrPut(pkg!!) { mutableMapOf() }
-                    .merge(hr, endSlot - s) { old, extra -> old + extra }
-            s = endSlot + 1
-        }
+  // 6) Sumar uso y contar spans por hora
+  val usageMap = mutableMapOf<String, MutableMap<Int, Long>>()
+  val spanCounts = mutableMapOf<String, MutableMap<Int, Int>>()
+  goodSpans.forEach { span ->
+    val pkg = span.pkg ?: return@forEach
+    var s = span.t0
+    while (s < span.t1) {
+      val c = Calendar.getInstance().apply { timeInMillis = s }
+      val hr = c.get(Calendar.HOUR_OF_DAY)
+      c.set(Calendar.MINUTE, 59); c.set(Calendar.SECOND, 59); c.set(Calendar.MILLISECOND, 999)
+      val slotEnd = minOf(c.timeInMillis, span.t1)
+      usageMap.getOrPut(pkg) { mutableMapOf() }
+        .merge(hr, slotEnd - s) { old, extra -> old + extra }
+      spanCounts.getOrPut(pkg) { mutableMapOf() }
+        .merge(hr, 1) { old, inc -> old + inc }
+      s = slotEnd + 1
     }
+  }
 
-    // Empaquetar resultados
-    val pm = packageManager
-    val out = mutableListOf<HourlyData>()
-    for ((pkg, hours) in usageMap) {
-        val ai = try { pm.getApplicationInfo(pkg, 0) } catch (_: Exception) { null }
-        if (ai != null && ((ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0 ||
-                          (ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0)) continue
-        val label = ai?.let { pm.getApplicationLabel(it).toString() } ?: pkg
-        val iconB64 = ai?.let {
-            val d = pm.getApplicationIcon(it)
-            val bmp = if (d is BitmapDrawable) d.bitmap else Bitmap.createBitmap(
-                d.intrinsicWidth.coerceAtLeast(1),
-                d.intrinsicHeight.coerceAtLeast(1),
-                Bitmap.Config.ARGB_8888
-            ).also { b -> Canvas(b).apply { d.setBounds(0,0,width,height); d.draw(this) } }
-            ByteArrayOutputStream().use { st -> bmp.compress(Bitmap.CompressFormat.PNG,100,st);
-                Base64.encodeToString(st.toByteArray(), Base64.NO_WRAP)
-            }
-        } ?: ""
+  // 7) Empaquetar resultados, filtrando launchDetails por la Main Activity
+  val pm = packageManager
+  val out = mutableListOf<HourlyData>()
+  usageMap.forEach { (pkg, byHour) ->
+    // Ignorar apps de sistema
+    val ai = try { pm.getApplicationInfo(pkg, 0) } catch (_: Exception) { null }
+    if (ai != null && (ai.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0) return@forEach
+    val label = ai?.let { pm.getApplicationLabel(it).toString() } ?: pkg
 
-        for ((hour, ms) in hours) {
-            val launches = launchCounts[pkg]?.get(hour) ?: 0
-            out += mapOf(
-                "packageName" to pkg,
-                "appName" to label,
-                "icon" to iconB64,
-                "hour" to hour,
-                "usage" to ms,
-                "launches" to launches
-            )
-        }
+    // Icono en Base64
+    val iconB64 = ai?.let {
+      val d   = pm.getApplicationIcon(it)
+      val bmp = (d as? BitmapDrawable)?.bitmap ?: Bitmap.createBitmap(
+        d.intrinsicWidth.coerceAtLeast(1), d.intrinsicHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888
+      ).also { b -> Canvas(b).apply { d.setBounds(0,0,width,height); d.draw(this) } }
+      ByteArrayOutputStream().use { st ->
+        bmp.compress(Bitmap.CompressFormat.PNG,100,st)
+        Base64.encodeToString(st.toByteArray(), Base64.NO_WRAP)
+      }
+    } ?: ""
+
+    // Totales del día
+    val totalUsage    = byHour.values.sum()
+    val totalLaunches = events.count { it.pkg == pkg && (it.type == UsageEvents.Event.MOVE_TO_FOREGROUND || it.type == UsageEvents.Event.MOVE_TO_BACKGROUND)
+      && it.cls == pm.getLaunchIntentForPackage(pkg)?.component?.className }
+    val firstUse      = goodSpans.filter { it.pkg == pkg }.minOfOrNull { it.t0 } ?: start
+    val lastUse       = goodSpans.filter { it.pkg == pkg }.maxOfOrNull { it.t1 } ?: start
+
+    // Preparar detalles filtrados por Main Activity
+    val launchClass = pm.getLaunchIntentForPackage(pkg)?.component?.className
+    val launchDetails = events.filter { it.pkg == pkg
+        && (it.type == UsageEvents.Event.MOVE_TO_FOREGROUND || it.type == UsageEvents.Event.MOVE_TO_BACKGROUND)
+        && it.cls == launchClass
+      }
+      .map { ev -> mutableMapOf<String, Any>(
+          "eventType" to ev.type,
+          "eventTypeName" to getEventTypeName(ev.type),
+          "timestamp" to ev.ts,
+          "className" to (ev.cls ?: "")
+      ) }
+
+    // Empaquetar por hora
+    byHour.forEach { (hour, ms) ->
+  // Calcula cuántos 'resumes' (launches) caen en esta hora:
+  val launchesPerHour = launchDetails.count { detail ->
+    detail["eventType"] == UsageEvents.Event.MOVE_TO_FOREGROUND &&
+    Calendar.getInstance().apply {
+      timeInMillis = detail["timestamp"] as Long
+    }.get(Calendar.HOUR_OF_DAY) == hour
+  }
+
+    val hourMap = mutableMapOf<String, Any>()
+    hourMap["packageName"] = pkg
+    hourMap["appName"]     = label
+    hourMap["icon"]        = iconB64
+    hourMap["hour"]        = hour
+    hourMap["usage"]       = ms
+    hourMap["spanCount"]   = spanCounts[pkg]?.get(hour) ?: 0
+    hourMap["totalUsage"]  = totalUsage
+    hourMap["launches"]    = launchesPerHour
+    hourMap["totalLaunches"] = totalLaunches
+    hourMap["firstUse"]    = firstUse
+    hourMap["lastUse"]     = lastUse
+    hourMap["launchDetails"] = launchDetails
+
+    out.add(hourMap)
     }
-    return out
+  }
+  return out
+}
+fun getEventTypeName(type: Int): String {
+  return UsageEvents.Event::class.java.fields
+    .asSequence()
+    .filter { f -> Modifier.isStatic(f.modifiers) && f.type == Int::class.javaPrimitiveType }
+    .firstOrNull { f ->
+      try { f.getInt(null) == type } catch (_: Exception) { false }
+    }
+    ?.name
+    ?: "UNKNOWN($type)"
 }
 
 }
+
+data class Evt(
+  val pkg: String?,
+  val type: Int,
+  val ts: Long,
+  val cls: String?  
+)
+

@@ -8,21 +8,60 @@ import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:system_alert_window/system_alert_window.dart';
 
-class StepsController extends GetxController {
-  RxBool permisionUsageIsComplete = false.obs;
+class StepsController extends GetxController with WidgetsBindingObserver {
+  RxBool permisionUsage = false.obs;
   RxBool permisionSuperPosicionComplete = false.obs;
   RxBool permisionAccesibility = false.obs;
 
-  // @override
-  // void onInit() async {
-  //   super.onInit();
-  // }
+  static const _channel = MethodChannel('com.example.app/usage_access');
 
-  askForSuperpositionPermision() async {
-    bool? status = await SystemAlertWindow.checkPermissions();
-    print(' ==== status == $status');
-    if (!(status ?? false)) {
-      SystemAlertWindow.requestPermissions();
+  // Estado reactivo del permiso
+  final status = 'Desconocido'.obs;
+
+  @override
+  void onInit() {
+    super.onInit();
+    // 1) Registrarnos como observer del ciclo de vida
+    WidgetsBinding.instance.addObserver(this);
+    // 2) Comprobar permiso al iniciar
+    _checkPermission();
+  }
+
+  @override
+  void onClose() {
+    // Quitar observer al cerrar el controller
+    WidgetsBinding.instance.removeObserver(this);
+    super.onClose();
+  }
+
+  // 3) Capturar evento de volver al foreground
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPermission();
+    }
+  }
+
+  // Abre la pantalla de ajustes de Usage Access
+  Future<void> openSettings() async {
+    try {
+      await _channel.invokeMethod('openUsageAccessSettings');
+      // No seteamos status aquí; esperamos al resumed para _checkPermission()
+    } on PlatformException catch (e) {
+      status.value = 'Error al abrir Ajustes: ${e.message}';
+      permisionUsage.value = false;
+    }
+  }
+
+  // Comprueba realmente si el permiso está concedido
+  Future<void> _checkPermission() async {
+    try {
+      final bool granted = await _channel.invokeMethod('isUsageAccessGranted');
+      status.value = granted ? 'Concedido' : 'No concedido';
+      permisionUsage.value = granted;
+    } on PlatformException catch (e) {
+      status.value = 'Error: ${e.message}';
+      permisionUsage.value = false;
     }
   }
 
@@ -69,24 +108,6 @@ class StepsController extends GetxController {
       print("Error al verificar la accesibilidad: ${e.message}");
       return false;
     }
-  }
-
-  Future<void> askForPermision() async {
-    // permisionUsageIsComplete.value = await verifyPermisions();
-    verifyPermisions().then(
-      (value) {
-        permisionUsageIsComplete.value = value;
-      },
-    );
-    print(' - -------- ${permisionUsageIsComplete.value}');
-  }
-
-  Future<bool> verifyPermisions() async {
-    List<AppUsageInfo> _list = await getUsageStats();
-    if (_list.isNotEmpty) {
-      return true;
-    }
-    return false;
   }
 
   Future<List<AppUsageInfo>> getUsageStats() async {

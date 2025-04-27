@@ -107,6 +107,8 @@ class _UsagePageSelectableState extends State<UsagePageSelectable> {
               children: [
                 Text('${e.appName}: ${timeToUse(e.usage)}'),
                 Text(
+                    '${e.appName}: ${timeToUse(UsageServiceHourly.calculateRealUsageForHour(hour, e.launchDetails))}'),
+                Text(
                   '${e.launches} interacciones',
                   style: TextStyle(fontSize: 10, color: Colors.grey),
                 ),
