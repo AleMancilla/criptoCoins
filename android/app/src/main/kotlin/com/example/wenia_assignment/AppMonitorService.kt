@@ -51,6 +51,7 @@ class AppMonitorService : Service() {
         private const val PREFS_NAME = "app_monitor_prefs"
         private const val KEY_PREFIX_USAGE = "usage_"
         private const val PERM_NOTIFICATION_ID = 2
+        private const val KEY_PREFIX_BLOCKED = "blocked_"
     }
 
     // 🔧 SharedPreferences para persistencia
@@ -65,10 +66,10 @@ class AppMonitorService : Service() {
     private var appTimerRunnable: Runnable? = null
     private var totalUsageTime = 0
     private var isScreenOn = true
-    private var hasShownLimitPopup = false
     private var usageLimits: MutableMap<String, Int> = mutableMapOf()
     private var extraTimePerApp: MutableMap<String, Int> = mutableMapOf()
     private var allowedPackages: List<String> = emptyList()
+
 
     // Receiver para eventos de pantalla
     private val screenStateReceiver = object : BroadcastReceiver() {
@@ -92,7 +93,9 @@ class AppMonitorService : Service() {
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
     private lateinit var overlayParams: WindowManager.LayoutParams
+    private var hasShownLimitPopup = false
     private var hasShownHalfLimitPopup = false
+    
 
     private val halfLimitMessages = listOf(
         "Desconecta para conectar: tu vida está más allá de la pantalla.",
@@ -288,6 +291,13 @@ class AppMonitorService : Service() {
         totalUsageTime = prefs.getInt("$KEY_PREFIX_USAGE$pkg", -1).let {
             if (it >= 0) it else getAppUsageTime(pkg)
         }
+        // ① Si ya está bloqueada, mostramos el popup de bloqueo y salimos
+        if (prefs.getBoolean("$KEY_PREFIX_BLOCKED$pkg", false)) {
+            showBlockedPopup(pkg)
+            return
+        }
+
+
         hasShownHalfLimitPopup = false
 
         showOverlay()
@@ -587,12 +597,69 @@ class AppMonitorService : Service() {
         // Botón Cerrar
         val closeButton = popupView.findViewById<Button>(R.id.close_popup_button)
         closeButton.setOnClickListener {
+            prefs.edit()
+                .putBoolean("$KEY_PREFIX_BLOCKED$packageName", true)
+                .apply()
+
             windowManager.removeView(popupView)
         }
 
         // Vibrar al mostrar
         vibratePhone()
     }
+
+    private fun showBlockedPopup(packageName: String) {
+        // Lleva al home para pausar la app de fondo
+        startActivity(Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        })
+
+        // Obtén el nombre legible de la app en mayúsculas
+        val appName = try {
+            packageManager
+                .getApplicationLabel(packageManager.getApplicationInfo(packageName, 0))
+                .toString()
+                .uppercase()
+        } catch (e: Exception) {
+            packageName.uppercase()
+        }
+
+        // Infla el layout bloqueado
+        val popupView = (getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater)
+            .inflate(R.layout.usage_blocked_popup, null)
+
+        // Asigna el texto dinámico
+        popupView.findViewById<TextView>(R.id.blocked_message).text =
+            "APP '$appName' BLOQUEADA"
+
+        // Parám. full-screen
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        ).apply { gravity = Gravity.CENTER }
+
+        val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        wm.addView(popupView, params)
+
+        // Botón “Cerrar” que quita el overlay y regresa al home
+        popupView.findViewById<Button>(R.id.close_blocked_button)
+            .setOnClickListener {
+                wm.removeView(popupView)
+                // Opcional: matar proceso
+                android.os.Process.killProcess(android.os.Process.myPid())
+            }
+
+        vibratePhone()
+    }
+
 
 
 
