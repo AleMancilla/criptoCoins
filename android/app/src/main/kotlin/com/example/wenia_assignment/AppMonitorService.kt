@@ -33,6 +33,11 @@ import android.content.SharedPreferences
 
 import android.widget.FrameLayout
 
+import android.provider.Settings
+import androidx.core.app.NotificationCompat
+import android.net.Uri
+
+import android.app.PendingIntent
 
 
 
@@ -40,12 +45,13 @@ class AppMonitorService : Service() {
 
     companion object {
         private const val NOTIF_ID = 1
+        private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "app_monitor_channel"
         // 🔧 Nombre de SharedPreferences y prefijo de clave
         private const val PREFS_NAME = "app_monitor_prefs"
         private const val KEY_PREFIX_USAGE = "usage_"
+        private const val PERM_NOTIFICATION_ID = 2
     }
-
 
     // 🔧 SharedPreferences para persistencia
     private lateinit var prefs: SharedPreferences
@@ -107,14 +113,84 @@ class AppMonitorService : Service() {
             addAction(Intent.ACTION_SCREEN_OFF)
         }
         registerReceiver(screenStateReceiver, filter)
+
+        // Si no hay permiso de overlay, mostrar notificación para pedirlo
+        if (!Settings.canDrawOverlays(this)) {
+            showPermissionNotification()
+            stopSelf()
+            return
+        }
+        // Arrancar como servicio foreground con notificación
+        startForeground(NOTIFICATION_ID, buildMonitoringNotification())
+        
+    }
+    // override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    //     // Si el sistema mata el servicio, lo reinicie
+    //     return START_STICKY
+    // }
+
+    override fun onBind(intent: Intent): IBinder? = null
+
+    private fun buildMonitoringNotification(): Notification {
+        // Crea el canal y la notificación que informa que el monitor está activo
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "App Monitor",
+                    NotificationManager.IMPORTANCE_LOW
+                )
+            )
+        }
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Monitor de uso activo")
+            .setContentText("La superposición está funcionando en segundo plano")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .build()
+    }
+
+    private fun showPermissionNotification() {
+        // Notificación que lleva al usuario a conceder overlay permission
+        val permIntent = Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:$packageName")
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val pi = PendingIntent.getActivity(
+            this, 0, permIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notif = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Permiso de superposición requerido")
+            .setContentText("Toca para habilitar el permiso de overlay")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .build()
+        startForeground(PERM_NOTIFICATION_ID, notif)
     }
 
     // 🔧 Aseguramos guardar al “swipear” la app
     override fun onTaskRemoved(rootIntent: Intent) {
+        // Cuando el usuario remueve la tarea, relanzar el servicio
+        val restartIntent = Intent(applicationContext, AppMonitorService::class.java).apply {
+            setPackage(packageName)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(restartIntent)
+        } else {
+            startService(restartIntent)
+        }
+
         lastAppPackage?.let { saveUsageTime(it, totalUsageTime) }
+
         super.onTaskRemoved(rootIntent)
         stopSelf()
     }
+
+
 
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -136,8 +212,6 @@ class AppMonitorService : Service() {
         return START_STICKY
     }
 
-
-    override fun onBind(intent: Intent?): IBinder? = null
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

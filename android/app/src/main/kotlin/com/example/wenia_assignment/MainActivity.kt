@@ -197,22 +197,20 @@ class MainActivity: FlutterActivity() {
     }
 
 
-    private fun startAppMonitorWithOverlay(onResult: (started: Boolean) -> Unit) {
-        if (!Settings.canDrawOverlays(this)) {
-            // Abre la pantalla de permisos
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-            startActivity(intent)
-            onResult(false)
-        } else {
-            // Ya tengo permiso → arranco servicio
-            val svcIntent = Intent(this, AppMonitorService::class.java)
-            ContextCompat.startForegroundService(this, svcIntent)
-            onResult(true)
-        }
+    private fun startAppMonitorWithOverlay(onResult: (Boolean) -> Unit) {
+    if (!Settings.canDrawOverlays(this)) {
+        val intent = Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:$packageName")
+        ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+        startActivity(intent)
+        onResult(false)
+    } else {
+        val svcIntent = Intent(this, AppMonitorService::class.java)
+        ContextCompat.startForegroundService(this, svcIntent)
+        onResult(true)
     }
+}
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
