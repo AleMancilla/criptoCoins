@@ -524,6 +524,130 @@ private fun removeFloatingWidget() {
     }
 
 
+  // private fun getHourlyUsageWithMeta(): List<Map<String, Any>> {
+  //   // 1) cálculo de inicio de hoy
+  //   val now   = System.currentTimeMillis()
+  //   val cal   = Calendar.getInstance().apply {
+  //     timeInMillis = now
+  //     set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+  //     set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+  //   }
+  //   val start = cal.timeInMillis
+
+  //   // 2) recogida de eventos
+  //   val usm    = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+  //   val events = usm.queryEvents(start, now)
+  //   val ev     = UsageEvents.Event()
+
+  //   data class Span(val pkg: String, val t0: Long, val t1: Long)
+  //   val lastFg   = mutableMapOf<String, Long>()
+  //   val spans    = mutableListOf<Span>()
+  //   val launches = mutableListOf<Pair<String, Long>>()
+
+  //   while (events.hasNextEvent()) {
+  //     events.getNextEvent(ev)
+  //     val pkg = ev.packageName ?: continue
+  //     when (ev.eventType) {
+  //       UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+  //         lastFg[pkg] = ev.timeStamp
+  //         launches += pkg to ev.timeStamp
+  //       }
+  //       UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+  //         val enter = lastFg.remove(pkg) ?: start
+  //         if (ev.timeStamp > enter) spans += Span(pkg, enter, ev.timeStamp)
+  //       }
+  //     }
+  //   }
+  //   lastFg.forEach { (pkg, enter) ->
+  //     spans += Span(pkg, enter, now)
+  //   }
+
+  //   // 3) acumula por paquete y hora
+  //   val raw = mutableMapOf<String, MutableMap<Int, MutableList<Long>>>()
+  //   fun slot(pkg: String, hour: Int) {
+  //     raw.getOrPut(pkg) { mutableMapOf() }
+  //        .getOrPut(hour) { mutableListOf(0L, 0L) }
+  //   }
+
+  //   for ((pkg, t0, t1) in spans) {
+  //     var s = maxOf(t0, start)
+  //     val e = minOf(t1, now)
+  //     while (s < e) {
+  //       val c = Calendar.getInstance().apply { timeInMillis = s }
+  //       val h = c.get(Calendar.HOUR_OF_DAY)
+  //       c.set(Calendar.MINUTE, 59); c.set(Calendar.SECOND, 59); c.set(Calendar.MILLISECOND, 999)
+  //       val endSlot = minOf(c.timeInMillis, e)
+  //       slot(pkg, h)
+  //       raw[pkg]!![h]!![0] += (endSlot - s)
+  //       s = endSlot + 1
+  //     }
+  //   }
+  //   // lanzamientos
+  //   for ((pkg, ts) in launches) {
+  //     if (ts in start..now) {
+  //       val h = Calendar.getInstance().apply { timeInMillis = ts }
+  //               .get(Calendar.HOUR_OF_DAY)
+  //       slot(pkg, h)
+  //       val lst = raw[pkg]!![h]!!           // MutableList<Long>
+  //       lst[1] = lst[1] + 1 
+  //     }
+  //   }
+
+  //   // 4) empaqueta con nombre e icono
+  //   val pm = packageManager
+  //   val out = mutableListOf<Map<String, Any>>()
+  //   for ((pkg, hours) in raw) {
+  //   // 1) Obtengo ApplicationInfo (si falla, lo dejo pasar, pero puedes ajustarlo)
+  //   val ai = try { pm.getApplicationInfo(pkg, 0) } catch (_: Exception) { null }
+
+  //   // 2) Si es app de sistema, la ignoro
+  //   if (ai != null) {
+  //       val isSystem = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+  //       val isUpdatedSys = (ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+  //       if (isSystem || isUpdatedSys) continue
+  //   }
+
+  //   // 3) Sigo empaquetando nombre, icono y stats
+  //   val label = ai?.let { pm.getApplicationLabel(it).toString() } ?: pkg
+
+  //     // icono a base64
+  //     val iconB64 = ai?.let {
+  //       val d = pm.getApplicationIcon(it)
+  //       val bmp = when(d) {
+  //         is BitmapDrawable -> d.bitmap
+  //         else -> {
+  //           val b = Bitmap.createBitmap(
+  //             d.intrinsicWidth.coerceAtLeast(1),
+  //             d.intrinsicHeight.coerceAtLeast(1),
+  //             Bitmap.Config.ARGB_8888
+  //           )
+  //           val c2 = Canvas(b)
+  //           d.setBounds(0,0,c2.width,c2.height)
+  //           d.draw(c2)
+  //           b
+  //         }
+  //       }
+  //       ByteArrayOutputStream().use { st ->
+  //         bmp.compress(Bitmap.CompressFormat.PNG, 100, st)
+  //         Base64.encodeToString(st.toByteArray(), Base64.NO_WRAP)
+  //       }
+  //     } ?: ""
+
+  //     for ((hour, vals) in hours) {
+  //       out += mapOf(
+  //         "packageName" to pkg,
+  //         "appName"     to label,
+  //         "icon"        to iconB64,
+  //         "hour"        to hour,
+  //         "usage"       to vals[0],
+  //         "launches"    to vals[1].toInt()
+  //       )
+  //     }
+  //   }
+  //   return out
+  // }
+
+
   private fun getHourlyUsageWithMeta(): List<Map<String, Any>> {
     // 1) cálculo de inicio de hoy
     val now   = System.currentTimeMillis()
@@ -807,6 +931,7 @@ fun Context.getHourlyForegroundUsage(): List<HourlyData> {
   }
   return out
 }
+
 fun getEventTypeName(type: Int): String {
   return UsageEvents.Event::class.java.fields
     .asSequence()
