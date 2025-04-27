@@ -56,7 +56,7 @@ class StepsController extends GetxController with WidgetsBindingObserver {
   // Comprueba realmente si el permiso está concedido
   Future<void> _checkPermission() async {
     try {
-      final bool granted = await _channel.invokeMethod('isUsageAccessGranted');
+      final bool granted = await checkPermisionUsage();
       status.value = granted ? 'Concedido' : 'No concedido';
       permisionUsage.value = granted;
     } on PlatformException catch (e) {
@@ -65,7 +65,11 @@ class StepsController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  permisionUseApp(BuildContext context) async {
+  Future<bool> checkPermisionUsage() async {
+    return await _channel.invokeMethod('isUsageAccessGranted');
+  }
+
+  Future<bool> checkPermisionOverlay(BuildContext context) async {
     final permissionValidator = EasyPermissionValidator(
       context: context,
       appName: 'Social Stop',
@@ -77,58 +81,15 @@ class StepsController extends GetxController with WidgetsBindingObserver {
       permissionSettingsMessage:
           'Necesita habilitar los permisos necesarios para que la aplicación funcione correctamente',
     );
-    var result = await permissionValidator.systemAlertWindow();
+    return await permissionValidator.systemAlertWindow();
+  }
+
+  permisionUseApp(BuildContext context) async {
+    var result = await checkPermisionOverlay(context);
     if (result) {
       // Do something;
       permisionSuperPosicionComplete.value = result;
       print(result);
-    }
-  }
-
-  permisionAccesibilidad(BuildContext context) async {
-    print(' ---- entro aqui');
-    final bool status = await checkAccessibility();
-    print(' ---- respuesta aqui $status');
-    if (!status) {
-      final bool request = await checkAccessibility();
-      permisionAccesibility.value = request;
-    } else {
-      permisionAccesibility.value = true;
-    }
-  }
-
-  static const platform = MethodChannel('com.example.timeService');
-
-  static Future<bool> checkAccessibility() async {
-    try {
-      // final bool isAccessibilityEnabled =
-      await platform.invokeMethod('startService');
-      return true;
-    } on PlatformException catch (e) {
-      print("Error al verificar la accesibilidad: ${e.message}");
-      return false;
-    }
-  }
-
-  Future<List<AppUsageInfo>> getUsageStats() async {
-    try {
-      DateTime endDate = DateTime.now();
-      DateTime startTime = DateTime(endDate.year, endDate.month,
-          endDate.day); // Inicia desde las 00:00 de hoy
-
-      List<AppUsageInfo> infoList =
-          await AppUsage().getAppUsage(startTime, endDate);
-
-      // setState(() => _infos = infoList);
-
-      for (var info in infoList) {
-        print(info.toString());
-      }
-      return (infoList);
-    } on AppUsageException catch (exception) {
-      print(' ====== > $exception');
-      // throw exception;
-      return [];
     }
   }
 }

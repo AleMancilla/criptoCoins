@@ -1,14 +1,30 @@
 import 'package:app_usage/app_usage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:installed_apps/index.dart';
+import 'package:wenia_assignment/presentation/first_steps/steps/steps_controller.dart';
 
 class HomeController extends GetxController {
   RxList<AppUsageInfo> listAppUsageInfo = <AppUsageInfo>[].obs;
+  static const _channel = MethodChannel('app/overlay');
   @override
   void onInit() async {
     super.onInit();
     getUsageStats();
+    activateTimer();
+  }
+
+  Future<void> activateTimer() async {
+    StepsController controller = Get.put(StepsController());
+
+    bool usagePermision = await controller.checkPermisionUsage();
+    bool overlayPermision =
+        await controller.checkPermisionOverlay(Get.context!);
+    await _channel.invokeMethod('startOverlayService');
+
+    print(
+        'usagePermision == $usagePermision === overlayPermision = $overlayPermision');
   }
 
   Future<void> getUsageStats() async {

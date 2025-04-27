@@ -37,6 +37,19 @@ class StepCero extends StatelessWidget {
               fontFamily: 'paradice',
             ),
           ),
+          GestureDetector(
+            onTap: () async {
+              bool usagePermision = await controller.checkPermisionUsage();
+              bool overlayPermision =
+                  await controller.checkPermisionOverlay(context);
+              print(
+                  'usagePermision == $usagePermision === overlayPermision = $overlayPermision');
+            },
+            child: Container(
+              color: Colors.red,
+              child: Text('solicitar permiso'),
+            ),
+          ),
           SizedBox(height: 20),
           Text(
             'podemos ayudarte a maximizar tu productividad, bloquear las aplicaciones que te distraen.',
