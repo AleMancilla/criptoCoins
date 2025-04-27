@@ -52,6 +52,7 @@ class AppMonitorService : Service() {
         private const val KEY_PREFIX_USAGE = "usage_"
         private const val PERM_NOTIFICATION_ID = 2
         private const val KEY_PREFIX_BLOCKED = "blocked_"
+        private const val KEY_LAST_RESET_DATE = "last_reset_date"
     }
 
     // 🔧 SharedPreferences para persistencia
@@ -247,6 +248,23 @@ class AppMonitorService : Service() {
         }
     }
 
+    private fun resetBlockedFlagsIfNeeded() {
+        val today = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+        val lastReset = prefs.getString(KEY_LAST_RESET_DATE, null)
+        if (lastReset != today) {
+            // 1) Eliminar todos los bloqueos
+            val editor = prefs.edit()
+            prefs.all.keys
+                .filter { it.startsWith(KEY_PREFIX_BLOCKED) }
+                .forEach { editor.remove(it) }
+
+            // 2) Actualizar la fecha de último reseteo
+            editor.putString(KEY_LAST_RESET_DATE, today)
+            editor.apply()
+        }
+    }
+
+
     private fun startMonitoring() {
         monitorRunnable = object : Runnable {
             override fun run() {
@@ -287,15 +305,20 @@ class AppMonitorService : Service() {
     }
 
     private fun startTracking(pkg: String) {
+
+    // 0) Resetea bloqueos si pasó medianoche
+    resetBlockedFlagsIfNeeded()
+    
     // 🔧 Restaura de prefs o, si no existe, usa UsageStats
         totalUsageTime = prefs.getInt("$KEY_PREFIX_USAGE$pkg", -1).let {
             if (it >= 0) it else getAppUsageTime(pkg)
         }
-        // ① Si ya está bloqueada, mostramos el popup de bloqueo y salimos
-        if (prefs.getBoolean("$KEY_PREFIX_BLOCKED$pkg", false)) {
-            showBlockedPopup(pkg)
-            return
-        }
+        // 1) Si ya está bloqueada, muestra el popup de bloqueo y sal...
+    if (prefs.getBoolean("$KEY_PREFIX_BLOCKED$pkg", false)) {
+        showBlockedPopup(pkg)
+        return
+    }
+
 
 
         hasShownHalfLimitPopup = false
