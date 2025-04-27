@@ -92,6 +92,25 @@ class AppMonitorService : Service() {
     private lateinit var windowManager: WindowManager
     private var overlayView: View? = null
     private lateinit var overlayParams: WindowManager.LayoutParams
+    private var hasShownHalfLimitPopup = false
+
+    private val halfLimitMessages = listOf(
+        "Desconecta para conectar: tu vida está más allá de la pantalla.",
+        "Cada minuto fuera de redes es una oportunidad para vivir algo real.",
+        "Las mejores conversaciones suceden cara a cara, no en likes.",
+        "Tu tiempo es valioso: úsalo en quien realmente te importa.",
+        "¿Sabes cuánto has vivido hoy? ¡Deja el scroll y descúbrelo!",
+        "Las redes son herramientas, no tu vida. Toma el control.",
+        "Mira a tu alrededor: el mundo espera fuera de tu teléfono.",
+        "Menos seguidores, más amigos. Menos pantalla, más experiencias.",
+        "La felicidad no se mide en notificaciones, sino en momentos.",
+        "Desbloquea tu creatividad: las ideas llegan cuando desconectas.",
+        "Tu presencia física vale más que cualquier mensaje en línea.",
+        "Hoy es un buen día para llamar a alguien en vez de escribir.",
+        "Las redes sociales son un viaje, pero la vida es el destino.",
+        "Recuerda: nadie en su lecho de muerte desearía haber scrolleado más.",
+        "SocialStop te ayuda a vivir, no a sobrevivir en likes."
+    )
 
     
     // Receiver para eventos de pantalla...
@@ -265,37 +284,94 @@ class AppMonitorService : Service() {
     }
 
     private fun startTracking(pkg: String) {
-        // 🔧 Restaura de prefs o, si no existe, usa UsageStats
+    // 🔧 Restaura de prefs o, si no existe, usa UsageStats
         totalUsageTime = prefs.getInt("$KEY_PREFIX_USAGE$pkg", -1).let {
             if (it >= 0) it else getAppUsageTime(pkg)
         }
+        hasShownHalfLimitPopup = false
 
         showOverlay()
 
         val limitSecs = usageLimits[pkg] ?: (15 * 60)
+        val halfLimitSecs = limitSecs / 2
+
         appTimerRunnable = object : Runnable {
             override fun run() {
                 totalUsageTime++
                 val txt = formatTime(totalUsageTime)
-                updateOverlay(txt, totalUsageTime,limitSecs)
+                updateOverlay(txt, totalUsageTime, limitSecs)
 
                 // 🔧 Cada tick guardamos el nuevo valor
                 saveUsageTime(pkg, totalUsageTime)
 
                 val extra = extraTimePerApp[pkg] ?: 0
-                Log.d("AppMonitorService", "App en uso: $pkg - Tiempo: $txt ___ limite $totalUsageTime >= limitSecs = $limitSecs == extra = $extra ___ $hasShownLimitPopup")
-                if (totalUsageTime >= limitSecs && extra <= 0 && !hasShownLimitPopup) {
+                Log.d("AppMonitorService", "App en uso: $pkg - Tiempo: $txt ___ límite $limitSecs, halfLímite $halfLimitSecs ___ extras $extra ___ mostrados: límitePopup=$hasShownLimitPopup, halfPopup=$hasShownHalfLimitPopup")
+
+                // 1) Si pasamos la mitad del límite, mostramos el primer aviso
+                // if (totalUsageTime > halfLimitSecs && totalUsageTime < limitSecs && !hasShownHalfLimitPopup) {
+                if (totalUsageTime > halfLimitSecs && totalUsageTime < limitSecs && !hasShownHalfLimitPopup) {
+                    showHalfLimitPopup(pkg)
+                    hasShownHalfLimitPopup = true
+                }
+                // 2) Si llegamos al límite total, mostramos el aviso de límite
+                else if (totalUsageTime >= limitSecs && extra <= 0 && !hasShownLimitPopup) {
                     showUsageLimitPopup(pkg)
                     hasShownLimitPopup = true
-                } else if (extra > 0) {
+                }
+                // 3) Si hay tiempo extra, lo descontamos
+                else if (extra > 0) {
                     extraTimePerApp[pkg] = extra - 1
                 }
+
                 handler.postDelayed(this, 1000)
             }
         }
         handler.post(appTimerRunnable!!)
         lastAppPackage = pkg
     }
+
+    private fun showHalfLimitPopup(packageName: String) {
+    // Escoge mensaje aleatorio
+    val message = halfLimitMessages.random()
+
+
+    // Infla tu nuevo layout de popup (full-screen)
+    val inflater = getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
+    val popupView = inflater.inflate(R.layout.usage_half_limit_popup, null)
+
+    // Asigna el mensaje aleatorio al TextView
+    val tv = popupView.findViewById<TextView>(R.id.half_message)
+    tv.text = message
+
+    // Parámetros full-screen
+    val params = WindowManager.LayoutParams(
+        WindowManager.LayoutParams.MATCH_PARENT,
+        WindowManager.LayoutParams.MATCH_PARENT,
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        else
+            WindowManager.LayoutParams.TYPE_PHONE,
+        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+        PixelFormat.TRANSLUCENT
+    ).apply { gravity = Gravity.CENTER }
+
+    val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+    windowManager.addView(popupView, params)
+
+    // Botón “Continuar”
+    popupView.findViewById<Button>(R.id.continue_button).setOnClickListener {
+        windowManager.removeView(popupView)
+        // (Opcional) relanzar la app:
+        packageManager.getLaunchIntentForPackage(packageName)
+            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ?.let(::startActivity)
+    }
+
+    // Vibrar al mostrar (si lo deseas)
+    vibratePhone()
+}
+
 
     private fun stopTracking(pkg: String?) {
         appTimerRunnable?.let { handler.removeCallbacks(it) }
